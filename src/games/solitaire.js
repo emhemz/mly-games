@@ -48,7 +48,8 @@ export class SolitaireGame {
       leftPad: 60,
       gap: 22,
       tableauY: 240,
-      tableauDy: 30,
+      tableauDyDown: 14, // tighter for face-down stacks
+      tableauDyUp: 32, // tighter stack, still readable
       wasteFanDx: 18,
     };
 
@@ -262,7 +263,7 @@ export class SolitaireGame {
 
     const pos = this._pilePositions();
     const px = pos.tableau[pileIndex].x;
-    const py = pos.tableau[pileIndex].y + cardIndex * this.layout.tableauDy;
+    const py = this._tableauYAt(pileIndex, cardIndex);
 
     this.drag = {
       cards: moving,
@@ -454,6 +455,23 @@ export class SolitaireGame {
     return { stock, waste, foundations, tableau };
   }
 
+  _tableauYs(pileIndex) {
+    const pos = this._pilePositions();
+    const pile = this.tableau[pileIndex];
+    const ys = [];
+    let y = pos.tableau[pileIndex].y;
+    for (let i = 0; i < pile.length; i++) {
+      ys.push(y);
+      y += pile[i].faceUp ? this.layout.tableauDyUp : this.layout.tableauDyDown;
+    }
+    return ys;
+  }
+
+  _tableauYAt(pileIndex, cardIndex) {
+    const ys = this._tableauYs(pileIndex);
+    return ys[cardIndex] ?? this._pilePositions().tableau[pileIndex].y;
+  }
+
   _wasteVisibleCards() {
     const pos = this._pilePositions();
     const visibleCards = this.waste.slice(-3);
@@ -489,7 +507,7 @@ export class SolitaireGame {
 
   _hitTest(x, y) {
     const pos = this._pilePositions();
-    const { cardW, cardH, tableauDy } = this.layout;
+    const { cardW, cardH } = this.layout;
 
     // Stock
     if (x >= pos.stock.x && x <= pos.stock.x + cardW && y >= pos.stock.y && y <= pos.stock.y + cardH) {
@@ -530,12 +548,15 @@ export class SolitaireGame {
       const pile = this.tableau[i];
       if (pile.length === 0) continue;
 
+      const ys = this._tableauYs(i);
+
       // iterate from top to bottom for hit
       for (let j = pile.length - 1; j >= 0; j--) {
-        const cy = p.y + j * tableauDy;
+        const cy = ys[j];
         const cx = p.x;
         const isLast = j === pile.length - 1;
-        const h = isLast ? cardH : tableauDy + 6;
+        const nextY = !isLast ? ys[j + 1] : cy + cardH;
+        const h = isLast ? cardH : Math.max(24, (nextY - cy) + 10);
         if (x >= cx && x <= cx + cardW && y >= cy && y <= cy + h) {
           return { type: 'tableau', pileIndex: i, cardIndex: j, card: pile[j] };
         }
@@ -556,7 +577,7 @@ export class SolitaireGame {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const { cardW, cardH, r, tableauDy } = this.layout;
+    const { cardW, cardH, r } = this.layout;
     const pos = this._pilePositions();
 
     // Felt background
@@ -637,18 +658,21 @@ export class SolitaireGame {
     for (let i = 0; i < 7; i++) {
       const pile = this.tableau[i];
       const p = pos.tableau[i];
+      let y = p.y;
       for (let j = 0; j < pile.length; j++) {
         const c = pile[j];
         const x = p.x;
-        const y = p.y + j * tableauDy;
 
         // If dragging, skip drawing the moving cards in their original pile
         if (this.drag && this.drag.from.type === 'tableau' && this.drag.from.pileIndex === i && j >= this.drag.from.cardIndex) {
+          y += c.faceUp ? this.layout.tableauDyUp : this.layout.tableauDyDown;
           continue;
         }
 
         if (c.faceUp) this._drawCardFace(x, y, c);
         else this._drawCardBack(x, y);
+
+        y += c.faceUp ? this.layout.tableauDyUp : this.layout.tableauDyDown;
       }
     }
 
@@ -658,7 +682,7 @@ export class SolitaireGame {
       const dy = this.drag.y;
       for (let i = 0; i < this.drag.cards.length; i++) {
         const c = this.drag.cards[i];
-        this._drawCardFace(dx, dy + i * tableauDy, c, { lifting: true });
+        this._drawCardFace(dx, dy + i * this.layout.tableauDyUp, c, { lifting: true });
       }
     }
 
@@ -769,8 +793,9 @@ export class SolitaireGame {
     ctx.font = '800 18px "Outfit", system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(rankToLabel(card.rank), x + 10, y + 24);
-    ctx.fillText(SUIT_SYMBOL[card.suit], x + 10, y + 44);
+    // tighter padding like classic solitaire
+    ctx.fillText(rankToLabel(card.rank), x + 10, y + 10);
+    ctx.fillText(SUIT_SYMBOL[card.suit], x + 10, y + 30);
 
     // Bottom-right (keep fully inside card — no rotation)
     ctx.textAlign = 'right';
