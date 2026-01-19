@@ -73,20 +73,24 @@
             </div>
 
             <!-- Game Card 3 -->
-            <div class="game-card">
+            <div class="game-card" data-game="solitaire">
               <div class="game-card-image">
                 <div class="placeholder-game-icon">
                   <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                    <polygon points="100,40 140,80 140,140 100,160 60,140 60,80" fill="#4169E1" opacity="0.4"/>
-                    <polygon points="100,60 130,90 130,130 100,145 70,130 70,90" fill="#FF8C42" opacity="0.5"/>
-                    <circle cx="100" cy="100" r="20" fill="#FFD700" opacity="0.6"/>
+                    <!-- Solitaire thumbnail (red/black) -->
+                    <rect x="55" y="35" width="65" height="100" rx="10" fill="white" opacity="0.92"/>
+                    <rect x="80" y="55" width="65" height="100" rx="10" fill="white" opacity="0.9"/>
+                    <text x="75" y="68" font-size="22" text-anchor="middle" fill="#ef4444">♥</text>
+                    <text x="105" y="88" font-size="22" text-anchor="middle" fill="#0f172a">♠</text>
+                    <text x="105" y="115" font-size="18" text-anchor="middle" fill="#0f172a">K</text>
+                    <text x="75" y="95" font-size="18" text-anchor="middle" fill="#ef4444">A</text>
                   </svg>
                 </div>
               </div>
               <div class="game-card-content">
-                <h3 class="game-title">Dream Project</h3>
-                <p class="game-description">Your next favorite game</p>
-                <button class="play-button" disabled>In Development</button>
+                <h3 class="game-title">Solitaire</h3>
+                <p class="game-description">Classic Klondike — red on black</p>
+                <button class="play-button" data-game="solitaire">Play Now</button>
               </div>
             </div>
 

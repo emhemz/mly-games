@@ -3,6 +3,7 @@ import { GameEngine } from './core/engine.js';
 import { PlaceholderGame } from './games/placeholder.js';
 import { TarotGame } from './games/tarot.js';
 import { BreakoutGame } from './games/breakout.js';
+import { SolitaireGame } from './games/solitaire.js';
 
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas);
@@ -12,6 +13,7 @@ const games = {
   placeholder: PlaceholderGame,
   tarot: TarotGame,
   breakout: BreakoutGame,
+  solitaire: SolitaireGame,
 };
 
 let currentGame = null;
@@ -21,6 +23,7 @@ const ROUTES = {
   home: '#/',
   tarot: '#/tarot',
   breakout: '#/breakout',
+  solitaire: '#/solitaire',
 };
 
 function normalizeHash() {
@@ -112,6 +115,7 @@ document.addEventListener('click', (event) => {
     // Route-based navigation (enables browser back/forward)
     if (gameName === 'tarot') setRoute(ROUTES.tarot);
     else if (gameName === 'breakout') setRoute(ROUTES.breakout);
+    else if (gameName === 'solitaire') setRoute(ROUTES.solitaire);
     else startGame(gameName);
   }
   
@@ -191,6 +195,18 @@ function route() {
   if (hash === ROUTES.breakout) {
     if (!(currentGame instanceof BreakoutGame)) {
       startGame('breakout');
+    } else {
+      app.style.display = 'none';
+      canvas.style.display = 'block';
+      cursor.style.display = 'none';
+      document.body.style.cursor = 'default';
+    }
+    return;
+  }
+
+  if (hash === ROUTES.solitaire) {
+    if (!(currentGame instanceof SolitaireGame)) {
+      startGame('solitaire');
     } else {
       app.style.display = 'none';
       canvas.style.display = 'block';
