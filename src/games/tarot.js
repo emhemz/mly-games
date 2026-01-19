@@ -13,8 +13,17 @@ export class TarotGame {
     this.hoveredCard = null;
     this.lastHoveredCard = null;
     this.audio = new TarotAudio();
-    this.cardRevealAnimation = {};
+    this.cardRevealAnimation = [];
     this.allCardsRevealedTime = null;
+    this._ambientStarted = false;
+
+    // Precomputed decor (avoid per-frame Math.random flicker/jank)
+    this._windowStars = [];
+    this._roomDust = [];
+
+    // Bound listeners (so we can remove them correctly)
+    this._onClick = null;
+    this._onMove = null;
   }
 
   init(canvas) {
@@ -33,140 +42,48 @@ export class TarotGame {
       left: { intensity: 1, phase: 0 },
       right: { intensity: 1, phase: Math.PI }
     };
-    
-    // Initialize audio
-    this.initAudio();
-    
-    // Setup click handler
-    this.canvas.addEventListener('click', this.handleClick.bind(this));
-    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+
+    this._initDecor();
+
+    // Setup handlers (bound once)
+    this._onClick = this.handleClick.bind(this);
+    this._onMove = this.handleMouseMove.bind(this);
+    this.canvas.addEventListener('click', this._onClick);
+    this.canvas.addEventListener('mousemove', this._onMove);
     
     // Button state
     this.showButton = true;
   }
-  
-  initAudio() {
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Create simple synth sounds
-    this.sounds = {
-      cardDraw: () => this.playCardDraw(),
-      cardReveal: () => this.playCardReveal(),
-      cardFlip: () => this.playCardFlip(),
-      mystical: () => this.playMystical()
+
+  _mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    
-    // Start ambient sound
-    this.startAmbient();
   }
-  
-  startAmbient() {
-    const ctx = this.audioContext;
-    
-    const playAmbient = () => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      // Very low frequency mystical hum
-      osc.frequency.setValueAtTime(55, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 4);
-      osc.type = 'sine';
-      
-      gain.gain.setValueAtTime(0.03, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 4);
-      
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 4);
-      
-      // Continue ambient
-      setTimeout(() => {
-        if (!this.destroyed) {
-          playAmbient();
-        }
-      }, 3500);
-    };
-    
-    playAmbient();
-  }
-  
-  playCardDraw() {
-    const ctx = this.audioContext;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.frequency.setValueAtTime(440, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
-    
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-    
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.2);
-  }
-  
-  playCardReveal() {
-    const ctx = this.audioContext;
-    
-    // Mystical chime sound
-    [523.25, 659.25, 783.99].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
-      osc.type = 'sine';
-      
-      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.6);
-      
-      osc.start(ctx.currentTime + i * 0.1);
-      osc.stop(ctx.currentTime + i * 0.1 + 0.6);
-    });
-  }
-  
-  playCardFlip() {
-    const ctx = this.audioContext;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.frequency.setValueAtTime(200, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
-    
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
-    
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.05);
-  }
-  
-  playMystical() {
-    const ctx = this.audioContext;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    osc.frequency.setValueAtTime(200, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 1);
-    osc.type = 'sine';
-    
-    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1);
-    
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 1);
+
+  _initDecor() {
+    const rng = this._mulberry32(0x6d6c795f); // "mly_" seed-ish
+
+    // Stars are stored normalized to the window rect (rx/ry)
+    this._windowStars = Array.from({ length: 36 }, () => ({
+      rx: rng(),
+      ry: rng(),
+      r: 0.6 + rng() * 1.8,
+      phase: rng() * Math.PI * 2,
+    }));
+
+    // Dust in room (normalized to top portion of canvas)
+    this._roomDust = Array.from({ length: 70 }, () => ({
+      rx: rng(),
+      ry: rng(),
+      r: 0.8 + rng() * 2.2,
+      phase: rng() * Math.PI * 2,
+    }));
   }
 
   update(deltaTime) {
@@ -274,12 +191,14 @@ export class TarotGame {
     
     // Add stars if night
     if (hour < 6 || hour >= 20) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-      for (let i = 0; i < 30; i++) {
-        const x = windowX + Math.random() * windowWidth;
-        const y = windowY + Math.random() * windowHeight;
-        const size = Math.random() * 2;
-        ctx.fillRect(x, y, size, size);
+      const t = Date.now() * 0.001;
+      for (const s of this._windowStars) {
+        const x = windowX + s.rx * windowWidth;
+        const y = windowY + s.ry * windowHeight;
+        const twinkle = 0.45 + 0.55 * Math.sin(t * 1.8 + s.phase);
+        const alpha = 0.15 + twinkle * 0.55;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillRect(x, y, s.r, s.r);
       }
     }
     
@@ -310,12 +229,13 @@ export class TarotGame {
     ctx.fillRect(0, 0, width, height);
     
     // Add some texture/atmosphere
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * width;
-      const y = Math.random() * height * 0.6;
-      const size = Math.random() * 3;
-      ctx.fillRect(x, y, size, size);
+    const t = Date.now() * 0.001;
+    for (const p of this._roomDust) {
+      const x = p.rx * width;
+      const y = p.ry * height * 0.6;
+      const a = 0.06 + 0.05 * (0.5 + 0.5 * Math.sin(t * 0.7 + p.phase));
+      ctx.fillStyle = `rgba(0, 0, 0, ${a})`;
+      ctx.fillRect(x, y, p.r, p.r);
     }
   }
 
@@ -436,77 +356,92 @@ export class TarotGame {
     // Old fortune teller sitting across from player
     const x = width / 2;
     const y = 150;
-    
-    // Body/shawl first (behind everything)
-    ctx.fillStyle = '#7c3aed';
+
+    ctx.save();
+
+    // Body / robe (soft gradient so it doesn't look flat)
+    const robeGrad = ctx.createLinearGradient(x, y + 40, x, y + 140);
+    robeGrad.addColorStop(0, '#7c3aed');
+    robeGrad.addColorStop(1, '#5b21b6');
+    ctx.fillStyle = robeGrad;
     ctx.beginPath();
-    ctx.moveTo(x - 50, y + 40);
-    ctx.lineTo(x + 50, y + 40);
-    ctx.lineTo(x + 65, y + 120);
-    ctx.lineTo(x - 65, y + 120);
+    ctx.moveTo(x - 55, y + 45);
+    ctx.lineTo(x + 55, y + 45);
+    ctx.lineTo(x + 70, y + 140);
+    ctx.lineTo(x - 70, y + 140);
     ctx.closePath();
     ctx.fill();
-    
-    // Shawl decorative patterns
-    ctx.strokeStyle = '#a78bfa';
-    ctx.lineWidth = 1;
+
+    // Buttons (subtle)
+    ctx.strokeStyle = 'rgba(196, 181, 253, 0.35)';
+    ctx.lineWidth = 2;
     for (let i = 0; i < 3; i++) {
       ctx.beginPath();
-      ctx.arc(x, y + 60 + i * 20, 8, 0, Math.PI * 2);
+      ctx.arc(x, y + 70 + i * 18, 8, 0, Math.PI * 2);
       ctx.stroke();
     }
-    
-    // Head with shawl
-    ctx.fillStyle = '#8b4513';
+
+    // Headscarf cap (draw FIRST so face sits in front cleanly)
+    ctx.fillStyle = '#6b21a8';
     ctx.beginPath();
-    ctx.ellipse(x, y, 42, 52, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y - 22, 50, 34, 0, Math.PI, Math.PI * 2);
     ctx.fill();
-    
+
+    // Hair (side wisps only — avoids the “second face” look)
+    ctx.fillStyle = '#6b3f2a';
+    ctx.beginPath();
+    ctx.ellipse(x - 30, y + 6, 14, 22, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(x + 30, y + 6, 14, 22, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
     // Face
     ctx.fillStyle = '#d4a574';
     ctx.beginPath();
-    ctx.ellipse(x, y + 5, 32, 38, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 6, 32, 40, 0, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Eyes (wise and kind with sparkle)
-    ctx.fillStyle = '#3e2723';
+
+    // Cheeks
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.18)';
     ctx.beginPath();
-    ctx.arc(x - 12, y - 2, 4, 0, Math.PI * 2);
-    ctx.arc(x + 12, y - 2, 4, 0, Math.PI * 2);
+    ctx.ellipse(x - 14, y + 14, 10, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(x + 14, y + 14, 10, 7, 0, 0, Math.PI * 2);
     ctx.fill();
-    
+
+    // Eyes (gentle)
+    ctx.fillStyle = '#2b1b14';
+    ctx.beginPath();
+    ctx.arc(x - 12, y + 2, 3.6, 0, Math.PI * 2);
+    ctx.arc(x + 12, y + 2, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+
     // Eye sparkles
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x - 11, y - 3, 1.5, 1.5);
-    ctx.fillRect(x + 13, y - 3, 1.5, 1.5);
-    
-    // Gentle smile
-    ctx.strokeStyle = '#8b6f47';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillRect(x - 11, y + 1, 1.5, 1.5);
+    ctx.fillRect(x + 13, y + 1, 1.5, 1.5);
+
+    // Smile
+    ctx.strokeStyle = 'rgba(62, 39, 35, 0.55)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y + 12, 14, 0.15, Math.PI - 0.15);
+    ctx.arc(x, y + 18, 14, 0.15, Math.PI - 0.15);
     ctx.stroke();
-    
-    // Headscarf (mystical purple)
-    ctx.fillStyle = '#6b21a8';
+
+    // Little nose dot (cute)
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.75)';
     ctx.beginPath();
-    ctx.ellipse(x, y - 22, 48, 32, 0, Math.PI, Math.PI * 2);
+    ctx.arc(x, y + 12, 3, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Headscarf shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.beginPath();
-    ctx.ellipse(x, y - 8, 42, 8, 0, 0, Math.PI);
-    ctx.fill();
-    
-    // Small jewelry/pendant
+
+    // Pendant
     ctx.fillStyle = '#fbbf24';
     ctx.beginPath();
-    ctx.arc(x, y + 28, 5, 0, Math.PI * 2);
+    ctx.arc(x, y + 34, 6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#f97316';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(249, 115, 22, 0.7)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    ctx.restore();
   }
 
   drawStartButton() {
@@ -696,12 +631,14 @@ export class TarotGame {
       // Outer golden border
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 4;
-      ctx.strokeRect(x + 2, y + 2, width - 4, height - 4);
+      this.roundRect(ctx, x + 2, y + 2, width - 4, height - 4, Math.max(4, borderRadius - 2));
+      ctx.stroke();
       
       // Inner purple border
       ctx.strokeStyle = '#8b5cf6';
       ctx.lineWidth = 2;
-      ctx.strokeRect(x + 6, y + 6, width - 12, height - 12);
+      this.roundRect(ctx, x + 6, y + 6, width - 12, height - 12, Math.max(3, borderRadius - 5));
+      ctx.stroke();
       
       // Corner decorations
       this.drawCardCorners(ctx, x, y, width, height);
@@ -1050,6 +987,13 @@ export class TarotGame {
   }
 
   handleClick(event) {
+    // Ensure audio starts after a user gesture (browser policy)
+    this.audio.resume();
+    if (!this._ambientStarted) {
+      this._ambientStarted = true;
+      this.audio.startAmbientLoop();
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -1111,6 +1055,7 @@ export class TarotGame {
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
         cursor = 'pointer';
         if (this.lastHoveredCard !== 'button') {
+          this.audio.resume();
           this.audio.playHover();
           this.lastHoveredCard = 'button';
         }
@@ -1132,6 +1077,7 @@ export class TarotGame {
           
           // Play hover sound only when starting to hover a new card
           if (this.lastHoveredCard !== index) {
+            this.audio.resume();
             this.audio.playHover();
             this.lastHoveredCard = index;
           }
@@ -1150,6 +1096,7 @@ export class TarotGame {
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
         cursor = 'pointer';
         if (this.lastHoveredCard !== 'newReading') {
+          this.audio.resume();
           this.audio.playHover();
           this.lastHoveredCard = 'newReading';
         }
@@ -1163,6 +1110,7 @@ export class TarotGame {
     // Draw 3 cards with staggered animation
     this.drawnCards = [];
     this.cardRevealAnimation = [];
+    this.allCardsRevealedTime = null;
     
     for (let i = 0; i < 3; i++) {
       const card = drawCard(this.shuffledDeck[i]);
@@ -1174,7 +1122,7 @@ export class TarotGame {
       
       // Play card draw sound
       setTimeout(() => {
-        this.sounds.cardDraw();
+        this.audio.playDraw();
       }, i * 200);
     }
     
@@ -1193,12 +1141,10 @@ export class TarotGame {
 
   destroy() {
     this.destroyed = true;
-    this.canvas.removeEventListener('click', this.handleClick);
-    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
-    
-    // Close audio context
-    if (this.audioContext) {
-      this.audioContext.close();
-    }
+    if (this._onClick) this.canvas.removeEventListener('click', this._onClick);
+    if (this._onMove) this.canvas.removeEventListener('mousemove', this._onMove);
+
+    // Stop audio
+    if (this.audio) this.audio.close();
   }
 }

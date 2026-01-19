@@ -14,6 +14,26 @@ const games = {
 
 let currentGame = null;
 
+// --- Simple hash router (GitHub Pages-friendly) ---
+const ROUTES = {
+  home: '#/',
+  tarot: '#/tarot',
+};
+
+function normalizeHash() {
+  // Accept empty hash as home
+  if (!window.location.hash || window.location.hash === '#') return ROUTES.home;
+  return window.location.hash;
+}
+
+function setRoute(hash, { replace = false } = {}) {
+  if (replace) {
+    window.location.replace(hash);
+  } else {
+    window.location.hash = hash;
+  }
+}
+
 // Custom Cursor
 const cursor = document.createElement('div');
 cursor.className = 'custom-cursor';
@@ -86,12 +106,18 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-game]');
   if (button && button.dataset.game) {
     const gameName = button.dataset.game;
-    startGame(gameName);
+    // Route-based navigation (enables browser back/forward)
+    if (gameName === 'tarot') {
+      setRoute(ROUTES.tarot);
+    } else {
+      // fallback for future games
+      startGame(gameName);
+    }
   }
   
   // Handle back button
   if (event.target.id === 'back-to-home') {
-    backToHome();
+    setRoute(ROUTES.home);
   }
 });
 
@@ -144,3 +170,31 @@ function backToHome() {
     backButton.remove();
   }
 }
+
+function route() {
+  const hash = normalizeHash();
+
+  if (hash === ROUTES.tarot) {
+    // If already in tarot, do nothing
+    if (!(currentGame instanceof TarotGame)) {
+      startGame('tarot');
+    } else {
+      // Ensure correct visibility if user used back/forward quickly
+      app.style.display = 'none';
+      canvas.style.display = 'block';
+      cursor.style.display = 'none';
+      document.body.style.cursor = 'default';
+    }
+    return;
+  }
+
+  // Default to home
+  if (hash !== ROUTES.home) {
+    setRoute(ROUTES.home, { replace: true });
+  }
+  backToHome();
+}
+
+window.addEventListener('hashchange', route);
+// Initial route on load
+route();

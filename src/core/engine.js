@@ -9,7 +9,12 @@ export class GameEngine {
 
   loadGame(game) {
     if (this.currentGame) {
-      this.currentGame.cleanup();
+      // Be defensive: different games may implement different lifecycle hooks
+      if (typeof this.currentGame.cleanup === 'function') {
+        this.currentGame.cleanup();
+      } else if (typeof this.currentGame.destroy === 'function') {
+        this.currentGame.destroy();
+      }
     }
     this.currentGame = game;
     this.currentGame.init(this.canvas, this.ctx);

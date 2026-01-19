@@ -2,6 +2,38 @@
 export class TarotAudio {
   constructor() {
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    this._ambientTimer = null;
+  }
+
+  async resume() {
+    if (!this.audioContext) return;
+    if (this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+      } catch {
+        // ignore (browser policy)
+      }
+    }
+  }
+
+  startAmbientLoop() {
+    if (this._ambientTimer) return;
+
+    const play = () => {
+      // Don't spam if context is not running yet
+      if (this.audioContext.state !== 'running') return;
+      this.playAmbient();
+    };
+
+    // start immediately + every ~3.5s
+    play();
+    this._ambientTimer = window.setInterval(play, 3500);
+  }
+
+  stopAmbientLoop() {
+    if (!this._ambientTimer) return;
+    window.clearInterval(this._ambientTimer);
+    this._ambientTimer = null;
   }
 
   // Mystical ambient sound
@@ -21,6 +53,25 @@ export class TarotAudio {
     
     oscillator.start();
     oscillator.stop(this.audioContext.currentTime + 2);
+  }
+
+  // Soft "card dealt" tick (subtle)
+  playDraw() {
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, this.audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(90, this.audioContext.currentTime + 0.08);
+
+    gain.gain.setValueAtTime(0.08, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.audioContext.destination);
+
+    osc.start();
+    osc.stop(this.audioContext.currentTime + 0.1);
   }
 
   // Card shuffle sound
@@ -137,5 +188,16 @@ export class TarotAudio {
         oscillator.stop(this.audioContext.currentTime + 1);
       }, index * 150);
     });
+  }
+
+  async close() {
+    try {
+      this.stopAmbientLoop();
+      if (this.audioContext && this.audioContext.state !== 'closed') {
+        await this.audioContext.close();
+      }
+    } catch {
+      // ignore
+    }
   }
 }
