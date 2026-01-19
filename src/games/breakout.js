@@ -1,8 +1,11 @@
+import { BreakoutAudio } from './breakout-audio.js';
+
 export class BreakoutGame {
   init(canvas, ctx) {
     this.canvas = canvas;
     this.ctx = ctx ?? canvas.getContext('2d');
     this.destroyed = false;
+    this.audio = new BreakoutAudio();
 
     // Fixed-size like the rest of the games (simple + consistent)
     this.canvas.width = 1200;
@@ -140,6 +143,9 @@ export class BreakoutGame {
     if (this.state.gameOver || this.state.won) return;
     if (!this.ball.stuckToPaddle) return;
 
+    // Audio must be resumed after a user gesture
+    this.audio.resume();
+
     this.state.started = true;
     this.ball.stuckToPaddle = false;
 
@@ -147,6 +153,7 @@ export class BreakoutGame {
     const angle = (-Math.PI / 2) + (Math.random() * 0.6 - 0.3); // mostly up
     this.ball.vx = Math.cos(angle) * this.ball.speed;
     this.ball.vy = Math.sin(angle) * this.ball.speed;
+    this.audio.launch();
   }
 
   update(deltaTime) {
@@ -184,14 +191,17 @@ export class BreakoutGame {
     if (this.ball.x - this.ball.r < 30) {
       this.ball.x = 30 + this.ball.r;
       this.ball.vx *= -1;
+      this.audio.wall();
     }
     if (this.ball.x + this.ball.r > this.canvas.width - 30) {
       this.ball.x = this.canvas.width - 30 - this.ball.r;
       this.ball.vx *= -1;
+      this.audio.wall();
     }
     if (this.ball.y - this.ball.r < 80) {
       this.ball.y = 80 + this.ball.r;
       this.ball.vy *= -1;
+      this.audio.wall();
     }
 
     // Paddle collision
@@ -212,6 +222,8 @@ export class BreakoutGame {
       const speed = Math.min(840, Math.hypot(this.ball.vx, this.ball.vy) * 1.01);
       this.ball.vx = Math.cos(angle) * speed;
       this.ball.vy = Math.sin(angle) * speed;
+
+      this.audio.paddle(Math.abs(hit));
     }
 
     // Brick collisions (simple AABB)
@@ -235,6 +247,9 @@ export class BreakoutGame {
     if (hitBrick) {
       hitBrick.alive = false;
       this.state.score += 10;
+      // row index from y position
+      const rowIndex = Math.max(0, Math.round((hitBrick.y - this.brick.top) / (this.brick.h + this.brick.gap)));
+      this.audio.brick(rowIndex);
 
       // Reflect based on which side we hit more
       const cx = hitBrick.x + hitBrick.w / 2;
@@ -248,6 +263,7 @@ export class BreakoutGame {
       const anyAlive = this.bricks.some((b) => b.alive);
       if (!anyAlive) {
         this.state.won = true;
+        this.audio.win();
       }
     }
 
@@ -256,10 +272,12 @@ export class BreakoutGame {
       this.state.lives -= 1;
       if (this.state.lives <= 0) {
         this.state.gameOver = true;
+        this.audio.gameOver();
       } else {
         this.ball.stuckToPaddle = true;
         this.ball.vx = 0;
         this.ball.vy = 0;
+        this.audio.lifeLost();
       }
     }
   }
@@ -329,6 +347,8 @@ export class BreakoutGame {
     window.removeEventListener('keyup', this._onKeyUp);
     this.canvas.removeEventListener('mousemove', this._onMouseMove);
     this.canvas.removeEventListener('click', this._onClick);
+
+    if (this.audio) this.audio.close();
   }
 }
 
