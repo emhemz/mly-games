@@ -1,4 +1,5 @@
 import { tarotDeck, shuffleDeck, drawCard } from './tarot-data.js';
+import { TarotAudio } from './tarot-audio.js';
 
 export class TarotGame {
   constructor() {
@@ -10,6 +11,10 @@ export class TarotGame {
     this.selectedCardIndex = null;
     this.isReading = false;
     this.hoveredCard = null;
+    this.lastHoveredCard = null;
+    this.audio = new TarotAudio();
+    this.cardRevealAnimation = {};
+    this.allCardsRevealedTime = null;
   }
 
   init(canvas) {
@@ -29,6 +34,9 @@ export class TarotGame {
       right: { intensity: 1, phase: Math.PI }
     };
     
+    // Initialize audio
+    this.initAudio();
+    
     // Setup click handler
     this.canvas.addEventListener('click', this.handleClick.bind(this));
     this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
@@ -36,14 +44,143 @@ export class TarotGame {
     // Button state
     this.showButton = true;
   }
+  
+  initAudio() {
+    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Create simple synth sounds
+    this.sounds = {
+      cardDraw: () => this.playCardDraw(),
+      cardReveal: () => this.playCardReveal(),
+      cardFlip: () => this.playCardFlip(),
+      mystical: () => this.playMystical()
+    };
+    
+    // Start ambient sound
+    this.startAmbient();
+  }
+  
+  startAmbient() {
+    const ctx = this.audioContext;
+    
+    const playAmbient = () => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      // Very low frequency mystical hum
+      osc.frequency.setValueAtTime(55, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 4);
+      osc.type = 'sine';
+      
+      gain.gain.setValueAtTime(0.03, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 4);
+      
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 4);
+      
+      // Continue ambient
+      setTimeout(() => {
+        if (!this.destroyed) {
+          playAmbient();
+        }
+      }, 3500);
+    };
+    
+    playAmbient();
+  }
+  
+  playCardDraw() {
+    const ctx = this.audioContext;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+    
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  }
+  
+  playCardReveal() {
+    const ctx = this.audioContext;
+    
+    // Mystical chime sound
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
+      osc.type = 'sine';
+      
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.1 + 0.6);
+      
+      osc.start(ctx.currentTime + i * 0.1);
+      osc.stop(ctx.currentTime + i * 0.1 + 0.6);
+    });
+  }
+  
+  playCardFlip() {
+    const ctx = this.audioContext;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
+    
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.05);
+  }
+  
+  playMystical() {
+    const ctx = this.audioContext;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 1);
+    osc.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 1);
+  }
 
   update(deltaTime) {
-    // Animate candle flicker
-    this.candleFlicker.left.phase += deltaTime * 0.003;
-    this.candleFlicker.right.phase += deltaTime * 0.004;
+    // Smooth candle flicker animation
+    this.candleFlicker.left.phase += deltaTime * 0.002;
+    this.candleFlicker.right.phase += deltaTime * 0.0025;
     
-    this.candleFlicker.left.intensity = 0.8 + Math.sin(this.candleFlicker.left.phase) * 0.2;
-    this.candleFlicker.right.intensity = 0.85 + Math.sin(this.candleFlicker.right.phase) * 0.15;
+    const leftNoise = Math.sin(this.candleFlicker.left.phase) * 0.15 + 
+                     Math.sin(this.candleFlicker.left.phase * 3.7) * 0.05;
+    const rightNoise = Math.sin(this.candleFlicker.right.phase) * 0.12 + 
+                      Math.sin(this.candleFlicker.right.phase * 2.9) * 0.08;
+    
+    this.candleFlicker.left.intensity = 0.85 + leftNoise;
+    this.candleFlicker.right.intensity = 0.88 + rightNoise;
   }
 
   render() {
@@ -77,9 +214,15 @@ export class TarotGame {
       this.drawCards();
     }
     
-    // Draw card meanings if all cards are revealed
+    // Draw card meanings if all cards are revealed (with delay to see last card)
     if (this.drawnCards.length === 3 && this.drawnCards.every(c => c.revealed)) {
-      this.drawReadings();
+      if (!this.allCardsRevealedTime) {
+        this.allCardsRevealedTime = Date.now();
+      }
+      const timeSinceAllRevealed = Date.now() - this.allCardsRevealedTime;
+      if (timeSinceAllRevealed > 1500) { // 1.5 second delay
+        this.drawReadings();
+      }
     }
   }
 
@@ -294,58 +437,76 @@ export class TarotGame {
     const x = width / 2;
     const y = 150;
     
+    // Body/shawl first (behind everything)
+    ctx.fillStyle = '#7c3aed';
+    ctx.beginPath();
+    ctx.moveTo(x - 50, y + 40);
+    ctx.lineTo(x + 50, y + 40);
+    ctx.lineTo(x + 65, y + 120);
+    ctx.lineTo(x - 65, y + 120);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Shawl decorative patterns
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(x, y + 60 + i * 20, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
     // Head with shawl
     ctx.fillStyle = '#8b4513';
     ctx.beginPath();
-    ctx.ellipse(x, y, 40, 50, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, 42, 52, 0, 0, Math.PI * 2);
     ctx.fill();
     
     // Face
     ctx.fillStyle = '#d4a574';
     ctx.beginPath();
-    ctx.ellipse(x, y + 5, 30, 35, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 5, 32, 38, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Eyes (wise and kind)
+    // Eyes (wise and kind with sparkle)
     ctx.fillStyle = '#3e2723';
     ctx.beginPath();
-    ctx.arc(x - 10, y, 3, 0, Math.PI * 2);
-    ctx.arc(x + 10, y, 3, 0, Math.PI * 2);
+    ctx.arc(x - 12, y - 2, 4, 0, Math.PI * 2);
+    ctx.arc(x + 12, y - 2, 4, 0, Math.PI * 2);
     ctx.fill();
     
-    // Smile
-    ctx.strokeStyle = '#3e2723';
+    // Eye sparkles
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x - 11, y - 3, 1.5, 1.5);
+    ctx.fillRect(x + 13, y - 3, 1.5, 1.5);
+    
+    // Gentle smile
+    ctx.strokeStyle = '#8b6f47';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y + 10, 12, 0.2, Math.PI - 0.2);
+    ctx.arc(x, y + 12, 14, 0.15, Math.PI - 0.15);
     ctx.stroke();
     
     // Headscarf (mystical purple)
     ctx.fillStyle = '#6b21a8';
     ctx.beginPath();
-    ctx.ellipse(x, y - 20, 45, 30, 0, Math.PI, Math.PI * 2);
+    ctx.ellipse(x, y - 22, 48, 32, 0, Math.PI, Math.PI * 2);
     ctx.fill();
     
-    // Body/shawl
-    ctx.fillStyle = '#7c3aed';
+    // Headscarf shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
     ctx.beginPath();
-    ctx.moveTo(x - 45, y + 40);
-    ctx.lineTo(x + 45, y + 40);
-    ctx.lineTo(x + 60, y + 120);
-    ctx.lineTo(x - 60, y + 120);
-    ctx.closePath();
+    ctx.ellipse(x, y - 8, 42, 8, 0, 0, Math.PI);
     ctx.fill();
     
-    // Hands on table
-    ctx.fillStyle = '#d4a574';
-    // Left hand
+    // Small jewelry/pendant
+    ctx.fillStyle = '#fbbf24';
     ctx.beginPath();
-    ctx.ellipse(x - 150, this.canvas.height * 0.42, 20, 25, -0.3, 0, Math.PI * 2);
+    ctx.arc(x, y + 28, 5, 0, Math.PI * 2);
     ctx.fill();
-    // Right hand
-    ctx.beginPath();
-    ctx.ellipse(x + 150, this.canvas.height * 0.42, 20, 25, 0.3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   drawStartButton() {
@@ -353,33 +514,70 @@ export class TarotGame {
     const width = this.canvas.width;
     const height = this.canvas.height;
     
-    const buttonX = width / 2 - 120;
+    const buttonX = width / 2 - 140;
     const buttonY = height * 0.7;
-    const buttonWidth = 240;
-    const buttonHeight = 60;
+    const buttonWidth = 280;
+    const buttonHeight = 70;
+    const borderRadius = 35; // Pill shape
+    
+    // Pulsating glow animation
+    const pulse = Math.sin(Date.now() * 0.002) * 0.3 + 0.7;
     
     // Button glow
-    const glowGradient = ctx.createRadialGradient(width / 2, buttonY + 30, 0, width / 2, buttonY + 30, 150);
-    glowGradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+    const glowGradient = ctx.createRadialGradient(width / 2, buttonY + 35, 0, width / 2, buttonY + 35, 180 * pulse);
+    glowGradient.addColorStop(0, `rgba(139, 92, 246, ${0.5 * pulse})`);
     glowGradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
     ctx.fillStyle = glowGradient;
-    ctx.fillRect(buttonX - 60, buttonY - 30, buttonWidth + 120, buttonHeight + 60);
+    ctx.beginPath();
+    ctx.arc(width / 2, buttonY + 35, 180 * pulse, 0, Math.PI * 2);
+    ctx.fill();
     
-    // Button background
-    ctx.fillStyle = 'rgba(88, 28, 135, 0.8)';
-    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    // Button background with gradient - ROUNDED
+    const bgGradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight);
+    bgGradient.addColorStop(0, 'rgba(139, 92, 246, 0.95)');
+    bgGradient.addColorStop(0.5, 'rgba(124, 58, 237, 0.95)');
+    bgGradient.addColorStop(1, 'rgba(109, 40, 217, 0.95)');
     
-    // Button border
-    ctx.strokeStyle = '#a78bfa';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    // Draw rounded rectangle (pill shape)
+    ctx.fillStyle = bgGradient;
+    ctx.beginPath();
+    ctx.moveTo(buttonX + borderRadius, buttonY);
+    ctx.lineTo(buttonX + buttonWidth - borderRadius, buttonY);
+    ctx.arc(buttonX + buttonWidth - borderRadius, buttonY + borderRadius, borderRadius, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(buttonX + borderRadius, buttonY + buttonHeight);
+    ctx.arc(buttonX + borderRadius, buttonY + borderRadius, borderRadius, Math.PI / 2, -Math.PI / 2);
+    ctx.closePath();
+    ctx.fill();
     
-    // Button text
-    ctx.fillStyle = '#e9d5ff';
-    ctx.font = 'bold 24px "Space Grotesk", sans-serif';
+    // Shimmer effect
+    const shimmerGradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY);
+    shimmerGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    shimmerGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.25)');
+    shimmerGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = shimmerGradient;
+    ctx.fill();
+    
+    // Button border with glow
+    ctx.shadowColor = 'rgba(167, 139, 250, 0.8)';
+    ctx.shadowBlur = 15;
+    const borderGradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY);
+    borderGradient.addColorStop(0, '#8b5cf6');
+    borderGradient.addColorStop(0.5, '#fbbf24');
+    borderGradient.addColorStop(1, '#8b5cf6');
+    ctx.strokeStyle = borderGradient;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    
+    // Button text with shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px "Outfit", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Draw Your Cards', width / 2, buttonY + 30);
+    ctx.fillText('✨ Draw Your Cards ✨', width / 2, buttonY + 35);
+    ctx.shadowBlur = 0;
     
     this.buttonBounds = { x: buttonX, y: buttonY, width: buttonWidth, height: buttonHeight };
   }
@@ -388,6 +586,7 @@ export class TarotGame {
     const ctx = this.ctx;
     const width = this.canvas.width;
     const height = this.canvas.height;
+    const now = Date.now();
     
     const cardWidth = 130;
     const cardHeight = 200;
@@ -397,7 +596,6 @@ export class TarotGame {
     
     // Draw position labels
     const labels = ['PAST', 'PRESENT', 'FUTURE'];
-    ctx.fillStyle = 'rgba(139, 92, 246, 0.6)';
     ctx.font = 'bold 14px "Space Grotesk", sans-serif';
     ctx.textAlign = 'center';
     ctx.letterSpacing = '2px';
@@ -405,18 +603,74 @@ export class TarotGame {
     this.drawnCards.forEach((card, index) => {
       const x = startX + (cardWidth + spacing) * index;
       
-      // Draw label above card
-      ctx.fillText(labels[index], x + cardWidth / 2, cardY - 20);
+      // Smooth fade-in animation
+      if (card.drawTime && now >= card.drawTime) {
+        const elapsed = now - card.drawTime;
+        card.opacity = Math.min(1, elapsed / 300);
+      } else if (!card.drawTime) {
+        card.opacity = 1;
+      }
       
-      // Add hover effect
-      const isHovering = this.hoveredCard === index;
-      const yOffset = isHovering ? -10 : 0;
-      
-      this.drawCard(ctx, card, x, cardY + yOffset, cardWidth, cardHeight, index);
+      if (card.opacity > 0) {
+        // Save context for opacity
+        ctx.globalAlpha = card.opacity;
+        
+        // Label with fade
+        const labelColors = ['#fb923c', '#fbbf24', '#8b5cf6'];
+        ctx.fillStyle = labelColors[index];
+        ctx.fillText(labels[index], x + cardWidth / 2, cardY - 20);
+        
+        // Add hover effect and reveal animation
+        const isHovering = this.hoveredCard === index;
+        let yOffset = isHovering && !card.revealed ? -10 : 0;
+        
+        // Reveal animation (flip effect)
+        if (card.revealed && card.revealTime) {
+          const revealElapsed = now - card.revealTime;
+          if (revealElapsed < 400) {
+            // Flip animation
+            const progress = revealElapsed / 400;
+            const scale = Math.abs(Math.cos(progress * Math.PI));
+            this.cardRevealAnimation[index] = scale;
+          } else {
+            this.cardRevealAnimation[index] = 1;
+          }
+        }
+        
+        this.drawCard(ctx, card, x, cardY + yOffset, cardWidth, cardHeight, index);
+        
+        ctx.globalAlpha = 1;
+      }
     });
   }
 
+  // Helper function to draw rounded rectangle
+  roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.arc(x + width - radius, y + radius, radius, -Math.PI / 2, 0);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.arc(x + width - radius, y + height - radius, radius, 0, Math.PI / 2);
+    ctx.lineTo(x + radius, y + height);
+    ctx.arc(x + radius, y + height - radius, radius, Math.PI / 2, Math.PI);
+    ctx.lineTo(x, y + radius);
+    ctx.arc(x + radius, y + radius, radius, Math.PI, -Math.PI / 2);
+    ctx.closePath();
+  }
+
   drawCard(ctx, cardData, x, y, width, height, index) {
+    ctx.save();
+    const borderRadius = 12; // Rounded corners
+    
+    // Apply flip animation if revealing
+    const flipScale = this.cardRevealAnimation[index] || 1;
+    if (cardData.revealed && flipScale < 1) {
+      ctx.translate(x + width / 2, y + height / 2);
+      ctx.scale(flipScale, 1);
+      ctx.translate(-(x + width / 2), -(y + height / 2));
+    }
+    
     // Enhanced shadow with glow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
     ctx.shadowBlur = 20;
@@ -431,7 +685,8 @@ export class TarotGame {
       gradient.addColorStop(0.5, '#2d1b69');
       gradient.addColorStop(1, '#1a0f3e');
       ctx.fillStyle = gradient;
-      ctx.fillRect(x, y, width, height);
+      this.roundRect(ctx, x, y, width, height, borderRadius);
+      ctx.fill();
       
       // Reset shadow for inner elements
       ctx.shadowColor = 'transparent';
@@ -527,7 +782,8 @@ export class TarotGame {
       backGradient.addColorStop(0.7, '#6b21a8');
       backGradient.addColorStop(1, '#581c87');
       ctx.fillStyle = backGradient;
-      ctx.fillRect(x, y, width, height);
+      this.roundRect(ctx, x, y, width, height, borderRadius);
+      ctx.fill();
       
       // Reset shadow
       ctx.shadowColor = 'transparent';
@@ -536,7 +792,8 @@ export class TarotGame {
       // Ornate border
       ctx.strokeStyle = '#a78bfa';
       ctx.lineWidth = 3;
-      ctx.strokeRect(x + 3, y + 3, width - 6, height - 6);
+      this.roundRect(ctx, x + 3, y + 3, width - 6, height - 6, borderRadius - 3);
+      ctx.stroke();
       
       // Inner mystical circle pattern
       const centerX = x + width / 2;
@@ -609,6 +866,8 @@ export class TarotGame {
     // Store card bounds for click detection
     if (!this.cardBounds) this.cardBounds = [];
     this.cardBounds[index] = { x, y, width, height };
+    
+    ctx.restore();
   }
   
   drawCardCorners(ctx, x, y, width, height) {
@@ -799,6 +1058,8 @@ export class TarotGame {
     if (this.buttonBounds && this.drawnCards.length === 0) {
       const btn = this.buttonBounds;
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
+        this.audio.playClick();
+        this.audio.playShuffle();
         this.startReading();
         return;
       }
@@ -808,9 +1069,19 @@ export class TarotGame {
     if (this.cardBounds && this.drawnCards.length > 0 && this.drawnCards.length < 4) {
       this.cardBounds.forEach((bounds, index) => {
         if (bounds && x >= bounds.x && x <= bounds.x + bounds.width && 
-            y >= bounds.y && y <= bounds.y + bounds.height) {
+            y >= bounds.y - 10 && y <= bounds.y + bounds.height) {
           if (!this.drawnCards[index].revealed) {
+            this.audio.playReveal();
             this.drawnCards[index].revealed = true;
+            this.drawnCards[index].revealTime = Date.now();
+            this.cardRevealAnimation[index] = 0;
+            
+            // If all cards revealed, play complete sound
+            if (this.drawnCards.every(c => c.revealed)) {
+              setTimeout(() => {
+                this.audio.playComplete();
+              }, 600);
+            }
           }
         }
       });
@@ -820,6 +1091,7 @@ export class TarotGame {
     if (this.newReadingBounds && this.drawnCards.length === 3 && this.drawnCards.every(c => c.revealed)) {
       const btn = this.newReadingBounds;
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
+        this.audio.playClick();
         this.resetReading();
       }
     }
@@ -838,10 +1110,15 @@ export class TarotGame {
       const btn = this.buttonBounds;
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
         cursor = 'pointer';
+        if (this.lastHoveredCard !== 'button') {
+          this.audio.playHover();
+          this.lastHoveredCard = 'button';
+        }
       }
     }
     
     // Check if hovering over cards
+    const previousHover = this.hoveredCard;
     this.hoveredCard = null;
     if (this.cardBounds && this.drawnCards.length > 0) {
       this.cardBounds.forEach((bounds, index) => {
@@ -852,8 +1129,19 @@ export class TarotGame {
             cursor = 'pointer';
           }
           hovering = true;
+          
+          // Play hover sound only when starting to hover a new card
+          if (this.lastHoveredCard !== index) {
+            this.audio.playHover();
+            this.lastHoveredCard = index;
+          }
         }
       });
+    }
+    
+    // Reset last hovered if not hovering anymore
+    if (this.hoveredCard === null && this.lastHoveredCard !== null && this.lastHoveredCard !== 'button') {
+      this.lastHoveredCard = null;
     }
     
     // Check if hovering over new reading button
@@ -861,6 +1149,10 @@ export class TarotGame {
       const btn = this.newReadingBounds;
       if (x >= btn.x && x <= btn.x + btn.width && y >= btn.y && y <= btn.y + btn.height) {
         cursor = 'pointer';
+        if (this.lastHoveredCard !== 'newReading') {
+          this.audio.playHover();
+          this.lastHoveredCard = 'newReading';
+        }
       }
     }
     
@@ -868,13 +1160,24 @@ export class TarotGame {
   }
 
   startReading() {
-    // Draw 3 cards
+    // Draw 3 cards with staggered animation
     this.drawnCards = [];
+    this.cardRevealAnimation = [];
+    
     for (let i = 0; i < 3; i++) {
       const card = drawCard(this.shuffledDeck[i]);
       card.revealed = false;
+      card.drawTime = Date.now() + i * 200; // Stagger the appearance
+      card.opacity = 0;
       this.drawnCards.push(card);
+      this.cardRevealAnimation.push(0);
+      
+      // Play card draw sound
+      setTimeout(() => {
+        this.sounds.cardDraw();
+      }, i * 200);
     }
+    
     this.showButton = false;
     this.cardBounds = [];
   }
@@ -885,10 +1188,17 @@ export class TarotGame {
     this.showButton = true;
     this.cardBounds = [];
     this.newReadingBounds = null;
+    this.allCardsRevealedTime = null;
   }
 
   destroy() {
+    this.destroyed = true;
     this.canvas.removeEventListener('click', this.handleClick);
     this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    
+    // Close audio context
+    if (this.audioContext) {
+      this.audioContext.close();
+    }
   }
 }
