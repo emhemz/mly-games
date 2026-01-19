@@ -12,6 +12,97 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
+  cursor: none; /* Hide default cursor */
+}
+
+/* Custom Cursor */
+.custom-cursor {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.8) 0%, rgba(249, 115, 22, 0.6) 100%);
+  pointer-events: none;
+  z-index: 10000;
+  transition: transform 0.15s ease;
+  mix-blend-mode: screen;
+  box-shadow: 
+    0 0 20px rgba(139, 92, 246, 0.6),
+    0 0 40px rgba(249, 115, 22, 0.4);
+}
+
+.custom-cursor::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border: 2px solid rgba(139, 92, 246, 0.3);
+  border-radius: 50%;
+  animation: cursor-pulse 2s ease-in-out infinite;
+}
+
+.custom-cursor::after {
+  content: '✨';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  opacity: 0;
+  animation: sparkle 1.5s ease-in-out infinite;
+}
+
+@keyframes cursor-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.1;
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(180deg);
+  }
+}
+
+.custom-cursor.hover {
+  transform: scale(1.5);
+  background: radial-gradient(circle, rgba(249, 115, 22, 0.9) 0%, rgba(139, 92, 246, 0.7) 100%);
+}
+
+/* Cursor Trail */
+.cursor-trail {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.6) 0%, rgba(249, 115, 22, 0.4) 100%);
+  pointer-events: none;
+  z-index: 9999;
+  animation: trail-fade 0.6s ease-out forwards;
+}
+
+@keyframes trail-fade {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0);
+  }
 }
 
 /* Modern Mesh Gradient Background */

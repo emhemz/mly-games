@@ -14,6 +14,73 @@ const games = {
 
 let currentGame = null;
 
+// Custom Cursor
+const cursor = document.createElement('div');
+cursor.className = 'custom-cursor';
+document.body.appendChild(cursor);
+
+let mouseX = 0;
+let mouseY = 0;
+let cursorX = 0;
+let cursorY = 0;
+
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  
+  // Create trail effect
+  if (app.style.display !== 'none') {
+    createTrail(e.clientX, e.clientY);
+  }
+});
+
+// Smooth cursor follow
+function animateCursor() {
+  const speed = 0.15;
+  cursorX += (mouseX - cursorX) * speed;
+  cursorY += (mouseY - cursorY) * speed;
+  
+  cursor.style.left = cursorX + 'px';
+  cursor.style.top = cursorY + 'px';
+  
+  requestAnimationFrame(animateCursor);
+}
+animateCursor();
+
+// Hover effect on interactive elements
+document.addEventListener('mouseover', (e) => {
+  if (e.target.closest('button, a, .game-card, .deco-item')) {
+    cursor.classList.add('hover');
+  }
+});
+
+document.addEventListener('mouseout', (e) => {
+  if (e.target.closest('button, a, .game-card, .deco-item')) {
+    cursor.classList.remove('hover');
+  }
+});
+
+// Cursor trail
+let trailTimeout;
+function createTrail(x, y) {
+  // Throttle trail creation
+  if (trailTimeout) return;
+  
+  trailTimeout = setTimeout(() => {
+    const trail = document.createElement('div');
+    trail.className = 'cursor-trail';
+    trail.style.left = x + 'px';
+    trail.style.top = y + 'px';
+    document.body.appendChild(trail);
+    
+    setTimeout(() => {
+      trail.remove();
+    }, 600);
+    
+    trailTimeout = null;
+  }, 30);
+}
+
 // Handle game buttons from homepage
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-game]');
@@ -34,6 +101,10 @@ function startGame(gameName) {
     // Hide homepage, show game
     app.style.display = 'none';
     canvas.style.display = 'block';
+    
+    // Hide custom cursor in game
+    cursor.style.display = 'none';
+    document.body.style.cursor = 'default';
     
     // Add back button if it doesn't exist
     if (!document.getElementById('back-to-home')) {
@@ -62,6 +133,10 @@ function backToHome() {
   // Show homepage, hide game
   app.style.display = 'flex';
   canvas.style.display = 'none';
+  
+  // Show custom cursor again
+  cursor.style.display = 'block';
+  document.body.style.cursor = 'none';
   
   // Remove back button
   const backButton = document.getElementById('back-to-home');
