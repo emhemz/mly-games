@@ -6,6 +6,8 @@ const SUIT_SYMBOL = {
   diamonds: '♦',
 };
 
+import { SolitaireAudio } from './solitaire-audio.js';
+
 function rankToLabel(rank) {
   if (rank === 1) return 'A';
   if (rank === 11) return 'J';
@@ -36,6 +38,8 @@ export class SolitaireGame {
     this.canvas.width = 1200;
     this.canvas.height = 800;
 
+    this.audio = new SolitaireAudio();
+
     this.layout = {
       cardW: 90,
       cardH: 128,
@@ -45,10 +49,11 @@ export class SolitaireGame {
       gap: 22,
       tableauY: 240,
       tableauDy: 30,
+      wasteFanDx: 18,
     };
 
     this.state = {
-      message: 'Click stock to draw • Drag cards • Double-click to send to foundation',
+      message: 'Click stock to draw 3 • Drag cards • Double-click to send to foundation',
       won: false,
     };
 
@@ -58,6 +63,8 @@ export class SolitaireGame {
     this.mouse = { x: 0, y: 0, down: false };
     this.drag = null; // { cards, from, offsetX, offsetY, x, y }
     this._lastClick = { t: 0, x: 0, y: 0 };
+    this.anims = []; // { cardId, fromX, fromY, toX, toY, start, dur }
+    this.drawingUntil = 0;
 
     this._onMouseMove = (e) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -73,6 +80,9 @@ export class SolitaireGame {
       e.preventDefault();
       this.mouse.down = true;
       const { x, y } = this.mouse;
+
+      // Resume audio on first user gesture (browser policy)
+      this.audio?.resume?.();
 
       // Double click detection
       const now = performance.now();
@@ -162,14 +172,52 @@ export class SolitaireGame {
     this.deck = [];
     this.state.won = false;
     this.drag = null;
+    this.anims = [];
+    this.drawingUntil = 0;
+  }
+
+  _easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
   }
 
   _drawFromStock() {
     if (this.state.won) return;
+    if (performance.now() < this.drawingUntil) return; // avoid spam-click during animation
+
     if (this.stock.length > 0) {
-      const c = this.stock.pop();
-      c.faceUp = true;
-      this.waste.push(c);
+      // Draw 3 at a time (or as many as left)
+      const pos = this._pilePositions();
+      const drawCount = Math.min(3, this.stock.length);
+      const now = performance.now();
+      const dur = 220;
+      const stagger = 70;
+
+      const startX = pos.stock.x;
+      const startY = pos.stock.y;
+
+      const baseIndex = Math.max(0, Math.min(2, this.waste.length % 3)); // purely cosmetic if you spam draw
+      for (let i = 0; i < drawCount; i++) {
+        const c = this.stock.pop();
+        c.faceUp = true;
+        this.waste.push(c);
+
+        // animate into fanned waste positions (top 3 visible)
+        const toX = pos.waste.x + (Math.max(0, Math.min(2, (this.waste.length - 1) % 3)) * this.layout.wasteFanDx);
+        const toY = pos.waste.y;
+
+        this.anims.push({
+          cardId: c.id,
+          fromX: startX,
+          fromY: startY,
+          toX,
+          toY,
+          start: now + i * stagger,
+          dur,
+        });
+      }
+
+      this.drawingUntil = now + (drawCount - 1) * stagger + dur;
+      this.audio?.draw?.();
     } else {
       // recycle waste -> stock
       while (this.waste.length) {
@@ -177,6 +225,7 @@ export class SolitaireGame {
         c.faceUp = false;
         this.stock.push(c);
       }
+      this.audio?.recycle?.();
     }
   }
 
@@ -187,7 +236,8 @@ export class SolitaireGame {
     if (!top || top.id !== card.id) return;
 
     const pos = this._pilePositions();
-    const px = pos.waste.x;
+    const visible = this._wasteVisibleCards();
+    const px = visible.length ? visible[visible.length - 1].x : pos.waste.x;
     const py = pos.waste.y;
 
     this.drag = {
@@ -252,10 +302,12 @@ export class SolitaireGame {
     if (!moved) {
       // return cards back to origin
       this._returnDrag(drag);
+      this.audio?.error?.();
     } else {
       // clean up origin (flip)
       this._afterMoveFrom(drag.from);
       this._checkWin();
+      this.audio?.place?.();
     }
   }
 
@@ -277,7 +329,10 @@ export class SolitaireGame {
       // If last card now face-down, flip it
       if (pile.length > 0) {
         const last = pile[pile.length - 1];
-        if (!last.faceUp) last.faceUp = true;
+        if (!last.faceUp) {
+          last.faceUp = true;
+          this.audio?.flip?.();
+        }
       }
     }
   }
@@ -287,6 +342,7 @@ export class SolitaireGame {
     if (won) {
       this.state.won = true;
       this.state.message = 'You win! Press R for a new game';
+      this.audio?.win?.();
     }
   }
 
@@ -398,6 +454,16 @@ export class SolitaireGame {
     return { stock, waste, foundations, tableau };
   }
 
+  _wasteVisibleCards() {
+    const pos = this._pilePositions();
+    const visibleCards = this.waste.slice(-3);
+    return visibleCards.map((c, i) => ({
+      card: c,
+      x: pos.waste.x + i * this.layout.wasteFanDx,
+      y: pos.waste.y,
+    }));
+  }
+
   _foundationKeyAt(x, y) {
     const pos = this._pilePositions();
     const { cardW, cardH } = this.layout;
@@ -431,9 +497,21 @@ export class SolitaireGame {
     }
 
     // Waste (top)
-    if (x >= pos.waste.x && x <= pos.waste.x + cardW && y >= pos.waste.y && y <= pos.waste.y + cardH) {
-      const card = this.waste[this.waste.length - 1] ?? null;
-      return { type: 'waste', card };
+    const wVis = this._wasteVisibleCards();
+    if (wVis.length) {
+      // check from topmost (rightmost) backwards
+      for (let i = wVis.length - 1; i >= 0; i--) {
+        const p = wVis[i];
+        if (x >= p.x && x <= p.x + cardW && y >= p.y && y <= p.y + cardH) {
+          const top = this.waste[this.waste.length - 1] ?? null;
+          return { type: 'waste', card: top };
+        }
+      }
+    } else {
+      // empty waste slot area
+      if (x >= pos.waste.x && x <= pos.waste.x + cardW && y >= pos.waste.y && y <= pos.waste.y + cardH) {
+        return { type: 'waste', card: null };
+      }
     }
 
     // Foundations (top)
@@ -468,7 +546,10 @@ export class SolitaireGame {
   }
 
   update() {
-    // solitaire is mostly event-driven; no per-frame physics needed
+    // Animate draws
+    if (!this.anims.length) return;
+    const now = performance.now();
+    this.anims = this.anims.filter((a) => now < a.start + a.dur);
   }
 
   render() {
@@ -497,7 +578,10 @@ export class SolitaireGame {
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.font = '500 16px "Space Grotesk", system-ui, sans-serif';
-    ctx.fillText(this.state.message, w / 2, h - 30);
+    ctx.fillText(this.state.message, w / 2, h - 62);
+
+    // Win chance bar (heuristic)
+    this._drawWinChanceBar();
 
     // Draw placeholders
     const drawSlot = (x, y) => {
@@ -531,8 +615,14 @@ export class SolitaireGame {
     }
 
     // Waste top
-    const wTop = this.waste[this.waste.length - 1];
-    if (wTop) this._drawCardFace(pos.waste.x, pos.waste.y, wTop);
+    const animating = new Set(this.anims.map((a) => a.cardId));
+    const wVisible = this._wasteVisibleCards();
+    for (let i = 0; i < wVisible.length; i++) {
+      const { card, x, y } = wVisible[i];
+      if (animating.has(card.id)) continue; // will be drawn by anim pass
+      // only top visible card gets face; others still face-up but draw them underneath
+      this._drawCardFace(x, y, card);
+    }
 
     // Foundations top
     for (const suit of SUITS) {
@@ -569,6 +659,20 @@ export class SolitaireGame {
       for (let i = 0; i < this.drag.cards.length; i++) {
         const c = this.drag.cards[i];
         this._drawCardFace(dx, dy + i * tableauDy, c, { lifting: true });
+      }
+    }
+
+    // Draw animations on top (stock -> waste deal)
+    if (this.anims.length) {
+      const now = performance.now();
+      for (const a of this.anims) {
+        if (now < a.start) continue;
+        const t = Math.min(1, (now - a.start) / a.dur);
+        const e = this._easeOutCubic(t);
+        const ax = a.fromX + (a.toX - a.fromX) * e;
+        const ay = a.fromY + (a.toY - a.fromY) * e;
+        const card = this.waste.find((c) => c.id === a.cardId);
+        if (card) this._drawCardFace(ax, ay, card, { lifting: true });
       }
     }
   }
@@ -612,8 +716,13 @@ export class SolitaireGame {
     ctx.stroke();
 
     // pattern
+    // Clip the pattern to the card shape so no rings spill outside
+    this._roundRect(ctx, x, y, cardW, cardH, r);
+    ctx.clip();
+
     ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 2;
     for (let i = 0; i < 6; i++) {
       ctx.beginPath();
       ctx.arc(x + cardW / 2, y + cardH / 2, 10 + i * 10, 0, Math.PI * 2);
@@ -639,6 +748,9 @@ export class SolitaireGame {
     ctx.fill();
 
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowColor = 'transparent';
     ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
     ctx.lineWidth = 2;
     this._roundRect(ctx, x, y, cardW, cardH, r);
@@ -656,16 +768,153 @@ export class SolitaireGame {
     ctx.fillStyle = isRed ? '#ef4444' : '#0f172a';
     ctx.font = '800 18px "Outfit", system-ui, sans-serif';
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
     ctx.fillText(rankToLabel(card.rank), x + 10, y + 24);
     ctx.fillText(SUIT_SYMBOL[card.suit], x + 10, y + 44);
 
+    // Bottom-right (keep fully inside card — no rotation)
     ctx.textAlign = 'right';
-    ctx.save();
-    ctx.translate(x + cardW - 10, y + cardH - 10);
-    ctx.rotate(Math.PI);
-    ctx.fillText(rankToLabel(card.rank), 0, 0);
-    ctx.fillText(SUIT_SYMBOL[card.suit], 0, 20);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(rankToLabel(card.rank), x + cardW - 10, y + cardH - 26);
+    ctx.fillText(SUIT_SYMBOL[card.suit], x + cardW - 10, y + cardH - 8);
+
     ctx.restore();
+  }
+
+  _estimateWinChance01() {
+    // Heuristic estimate (0..1). Not perfect math; just a vibe meter.
+    const foundationCount = Object.values(this.foundations).reduce((sum, p) => sum + p.length, 0); // 0..52
+    const tableauFaceUp = this.tableau.reduce((sum, pile) => sum + pile.filter((c) => c.faceUp).length, 0);
+    const tableauTotal = this.tableau.reduce((sum, pile) => sum + pile.length, 0);
+    const faceUpRatio = tableauTotal > 0 ? tableauFaceUp / tableauTotal : 0;
+
+    const emptyTableau = this.tableau.filter((p) => p.length === 0).length;
+    const stockLeft = this.stock.length;
+    const wasteCount = this.waste.length;
+
+    // Count some immediate legal moves (top-cards only; cheap)
+    const moves = this._countQuickMoves();
+
+    // Core progress: foundations dominate
+    let score = 0;
+    score += (foundationCount / 52) * 0.62;
+    score += faceUpRatio * 0.18;
+    score += Math.min(1, moves / 10) * 0.16;
+    score += Math.min(2, emptyTableau) * 0.03; // small boost for flexibility
+
+    // Penalties
+    score -= Math.min(1, stockLeft / 24) * 0.08;
+    score -= Math.min(1, wasteCount / 24) * 0.04;
+
+    // Baseline chance so early game doesn't show 0%
+    score = 0.06 + score;
+
+    if (this.state.won) score = 1;
+    return Math.max(0, Math.min(1, score));
+  }
+
+  _countQuickMoves() {
+    let n = 0;
+
+    const wasteTop = this.waste[this.waste.length - 1];
+    if (wasteTop && wasteTop.faceUp) {
+      // to foundation
+      n += this._canGoFoundation(wasteTop) ? 1 : 0;
+      // to any tableau
+      for (let i = 0; i < 7; i++) {
+        if (this._canGoTableau([wasteTop], i)) {
+          n += 1;
+          break;
+        }
+      }
+    }
+
+    // tableau tops
+    for (let i = 0; i < 7; i++) {
+      const pile = this.tableau[i];
+      if (!pile.length) continue;
+      const top = pile[pile.length - 1];
+      if (!top.faceUp) continue;
+
+      // to foundation
+      if (this._canGoFoundation(top)) n += 1;
+
+      // to other tableau (top-only quick check)
+      for (let j = 0; j < 7; j++) {
+        if (i === j) continue;
+        if (this._canGoTableau([top], j)) {
+          n += 1;
+          break;
+        }
+      }
+    }
+
+    return n;
+  }
+
+  _canGoFoundation(card) {
+    const pile = this.foundations[card.suit];
+    const need = pile.length === 0 ? 1 : pile[pile.length - 1].rank + 1;
+    return card.rank === need;
+  }
+
+  _canGoTableau(cards, destIndex) {
+    const dest = this.tableau[destIndex];
+    const movingTop = cards[0];
+    if (!movingTop.faceUp) return false;
+    if (dest.length === 0) return movingTop.rank === 13;
+    const top = dest[dest.length - 1];
+    if (!top.faceUp) return false;
+    if (top.color === movingTop.color) return false;
+    return top.rank === movingTop.rank + 1;
+  }
+
+  _drawWinChanceBar() {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    const chance = this._estimateWinChance01();
+    const pct = Math.round(chance * 100);
+
+    const barW = 520;
+    const barH = 14;
+    const x = w / 2 - barW / 2;
+    const y = h - 30;
+    const r = 8;
+
+    // Track background
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    this._roundRect(ctx, x, y, barW, barH, r);
+    ctx.fill();
+
+    // Fill (red -> yellow -> green)
+    const fillW = Math.max(6, Math.floor(barW * chance));
+    const grad = ctx.createLinearGradient(x, y, x + barW, y);
+    grad.addColorStop(0, '#ef4444');
+    grad.addColorStop(0.55, '#fbbf24');
+    grad.addColorStop(1, '#22c55e');
+
+    ctx.fillStyle = grad;
+    this._roundRect(ctx, x, y, fillW, barH, r);
+    ctx.fill();
+
+    // Border
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    this._roundRect(ctx, x, y, barW, barH, r);
+    ctx.stroke();
+
+    // Label
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.font = '600 14px "Space Grotesk", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`Est. win chance: ${pct}%`, w / 2, y - 6);
 
     ctx.restore();
   }
@@ -676,6 +925,8 @@ export class SolitaireGame {
     this.canvas.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('keydown', this._onKeyDown);
+
+    this.audio?.close?.();
   }
 }
 
