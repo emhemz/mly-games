@@ -365,6 +365,34 @@ body {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
+/* Back Button */
+.back-button {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  transform: translateX(-5px);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .header {
