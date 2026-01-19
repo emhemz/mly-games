@@ -9,6 +9,7 @@ export class TarotGame {
     this.candles = [];
     this.selectedCardIndex = null;
     this.isReading = false;
+    this.hoveredCard = null;
   }
 
   init(canvas) {
@@ -388,36 +389,67 @@ export class TarotGame {
     const width = this.canvas.width;
     const height = this.canvas.height;
     
-    const cardWidth = 100;
-    const cardHeight = 160;
-    const spacing = 40;
+    const cardWidth = 130;
+    const cardHeight = 200;
+    const spacing = 50;
     const startX = width / 2 - (cardWidth * 3 + spacing * 2) / 2;
-    const cardY = height * 0.55;
+    const cardY = height * 0.52;
+    
+    // Draw position labels
+    const labels = ['PAST', 'PRESENT', 'FUTURE'];
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.6)';
+    ctx.font = 'bold 14px "Space Grotesk", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.letterSpacing = '2px';
     
     this.drawnCards.forEach((card, index) => {
       const x = startX + (cardWidth + spacing) * index;
-      this.drawCard(ctx, card, x, cardY, cardWidth, cardHeight, index);
+      
+      // Draw label above card
+      ctx.fillText(labels[index], x + cardWidth / 2, cardY - 20);
+      
+      // Add hover effect
+      const isHovering = this.hoveredCard === index;
+      const yOffset = isHovering ? -10 : 0;
+      
+      this.drawCard(ctx, card, x, cardY + yOffset, cardWidth, cardHeight, index);
     });
   }
 
   drawCard(ctx, cardData, x, y, width, height, index) {
-    // Card shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(x + 5, y + 5, width, height);
+    // Enhanced shadow with glow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 8;
     
     // Card background
     if (cardData.revealed) {
-      // Revealed card - show details
+      // Revealed card - beautiful ornate design
       const gradient = ctx.createLinearGradient(x, y, x, y + height);
-      gradient.addColorStop(0, '#2d1b69');
+      gradient.addColorStop(0, '#1a0f3e');
+      gradient.addColorStop(0.5, '#2d1b69');
       gradient.addColorStop(1, '#1a0f3e');
       ctx.fillStyle = gradient;
       ctx.fillRect(x, y, width, height);
       
-      // Card border
+      // Reset shadow for inner elements
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      
+      // Decorative border - multiple layers
+      // Outer golden border
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x + 2, y + 2, width - 4, height - 4);
+      
+      // Inner purple border
       ctx.strokeStyle = '#8b5cf6';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, width, height);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 6, y + 6, width - 12, height - 12);
+      
+      // Corner decorations
+      this.drawCardCorners(ctx, x, y, width, height);
       
       // Rotation indicator
       if (cardData.isReversed) {
@@ -427,76 +459,190 @@ export class TarotGame {
         ctx.translate(-(x + width / 2), -(y + height / 2));
       }
       
-      // Card name
-      ctx.fillStyle = '#e9d5ff';
-      ctx.font = 'bold 11px "Outfit", sans-serif';
+      // Card name with elegant background
+      ctx.fillStyle = 'rgba(139, 92, 246, 0.3)';
+      ctx.fillRect(x + 10, y + 15, width - 20, 45);
+      
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 13px "Outfit", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       
       // Word wrap card name
       const words = cardData.name.split(' ');
       let line = '';
-      let lineY = y + 10;
+      let lineY = y + 22;
       words.forEach((word, i) => {
         const testLine = line + word + ' ';
         const metrics = ctx.measureText(testLine);
-        if (metrics.width > width - 20 && i > 0) {
+        if (metrics.width > width - 30 && i > 0) {
           ctx.fillText(line, x + width / 2, lineY);
           line = word + ' ';
-          lineY += 14;
+          lineY += 16;
         } else {
           line = testLine;
         }
       });
       ctx.fillText(line, x + width / 2, lineY);
       
-      // Card symbol
-      ctx.font = '40px serif';
-      ctx.fillText('🔮', x + width / 2, y + height / 2 - 10);
+      // Card symbol with glow
+      const symbolGradient = ctx.createRadialGradient(
+        x + width / 2, y + height / 2, 0,
+        x + width / 2, y + height / 2, 30
+      );
+      symbolGradient.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
+      symbolGradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+      ctx.fillStyle = symbolGradient;
+      ctx.fillRect(x + 25, y + 60, width - 50, 60);
       
-      // Orientation
-      ctx.font = 'italic 10px "Space Grotesk", sans-serif';
+      ctx.font = '50px serif';
+      ctx.fillStyle = '#e9d5ff';
+      ctx.fillText('🔮', x + width / 2, y + height / 2 - 5);
+      
+      // Orientation badge
+      const badgeY = y + height - 30;
+      const badgeWidth = 70;
+      const badgeX = x + width / 2 - badgeWidth / 2;
+      
+      ctx.fillStyle = cardData.isReversed ? 'rgba(252, 165, 165, 0.2)' : 'rgba(134, 239, 172, 0.2)';
+      ctx.fillRect(badgeX, badgeY, badgeWidth, 20);
+      
+      ctx.strokeStyle = cardData.isReversed ? '#fca5a5' : '#86efac';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX, badgeY, badgeWidth, 20);
+      
+      ctx.font = 'bold 9px "Space Grotesk", sans-serif';
       ctx.fillStyle = cardData.isReversed ? '#fca5a5' : '#86efac';
-      ctx.fillText(cardData.orientation, x + width / 2, y + height - 15);
+      ctx.textAlign = 'center';
+      ctx.fillText(cardData.orientation.toUpperCase(), x + width / 2, badgeY + 13);
       
       if (cardData.isReversed) {
         ctx.restore();
       }
     } else {
-      // Face-down card
+      // Face-down card - mystical animated design
       const backGradient = ctx.createLinearGradient(x, y, x + width, y + height);
       backGradient.addColorStop(0, '#581c87');
-      backGradient.addColorStop(0.5, '#7c3aed');
+      backGradient.addColorStop(0.3, '#7c3aed');
+      backGradient.addColorStop(0.7, '#6b21a8');
       backGradient.addColorStop(1, '#581c87');
       ctx.fillStyle = backGradient;
       ctx.fillRect(x, y, width, height);
       
-      // Mystical pattern
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      
+      // Ornate border
       ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x + 3, y + 3, width - 6, height - 6);
+      
+      // Inner mystical circle pattern
+      const centerX = x + width / 2;
+      const centerY = y + height / 2;
+      
+      // Outer circle
+      ctx.strokeStyle = '#c4b5fd';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x + width / 2, y + height / 2, 30, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, 35, 0, Math.PI * 2);
       ctx.stroke();
       
-      // Stars
+      // Middle circle
+      ctx.strokeStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 25, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Inner circle
+      ctx.strokeStyle = '#8b5cf6';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Rotating stars
+      const time = Date.now() * 0.001;
       for (let i = 0; i < 8; i++) {
-        const angle = (i * Math.PI * 2) / 8;
-        const sx = x + width / 2 + Math.cos(angle) * 35;
-        const sy = y + height / 2 + Math.sin(angle) * 35;
+        const angle = (i * Math.PI * 2) / 8 + time;
+        const sx = centerX + Math.cos(angle) * 40;
+        const sy = centerY + Math.sin(angle) * 40;
+        
+        // Star glow
+        const starGlow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 8);
+        starGlow.addColorStop(0, '#fbbf24');
+        starGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = starGlow;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Star
         ctx.fillStyle = '#fbbf24';
-        ctx.fillRect(sx - 2, sy - 2, 4, 4);
+        ctx.beginPath();
+        for (let j = 0; j < 5; j++) {
+          const starAngle = (j * Math.PI * 2) / 5 - Math.PI / 2;
+          const starX = sx + Math.cos(starAngle) * 4;
+          const starY = sy + Math.sin(starAngle) * 4;
+          if (j === 0) ctx.moveTo(starX, starY);
+          else ctx.lineTo(starX, starY);
+        }
+        ctx.closePath();
+        ctx.fill();
       }
       
-      // Click hint
-      ctx.fillStyle = 'rgba(233, 213, 255, 0.6)';
-      ctx.font = '12px "Space Grotesk", sans-serif';
+      // Click hint with glow
+      ctx.fillStyle = 'rgba(139, 92, 246, 0.4)';
+      ctx.fillRect(x + 15, y + height + 10, width - 30, 25);
+      
+      ctx.fillStyle = '#e9d5ff';
+      ctx.font = 'bold 11px "Space Grotesk", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Click to reveal', x + width / 2, y + height + 20);
+      ctx.shadowColor = 'rgba(139, 92, 246, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.fillText('✨ CLICK TO REVEAL ✨', x + width / 2, y + height + 25);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     }
     
     // Store card bounds for click detection
     if (!this.cardBounds) this.cardBounds = [];
     this.cardBounds[index] = { x, y, width, height };
+  }
+  
+  drawCardCorners(ctx, x, y, width, height) {
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    const cornerSize = 12;
+    
+    // Top-left
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + 10 + cornerSize);
+    ctx.lineTo(x + 10, y + 10);
+    ctx.lineTo(x + 10 + cornerSize, y + 10);
+    ctx.stroke();
+    
+    // Top-right
+    ctx.beginPath();
+    ctx.moveTo(x + width - 10 - cornerSize, y + 10);
+    ctx.lineTo(x + width - 10, y + 10);
+    ctx.lineTo(x + width - 10, y + 10 + cornerSize);
+    ctx.stroke();
+    
+    // Bottom-left
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + height - 10 - cornerSize);
+    ctx.lineTo(x + 10, y + height - 10);
+    ctx.lineTo(x + 10 + cornerSize, y + height - 10);
+    ctx.stroke();
+    
+    // Bottom-right
+    ctx.beginPath();
+    ctx.moveTo(x + width - 10 - cornerSize, y + height - 10);
+    ctx.lineTo(x + width - 10, y + height - 10);
+    ctx.lineTo(x + width - 10, y + height - 10 - cornerSize);
+    ctx.stroke();
   }
 
   drawReadings() {
@@ -504,72 +650,144 @@ export class TarotGame {
     const width = this.canvas.width;
     const height = this.canvas.height;
     
-    // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    // Beautiful gradient overlay
+    const overlayGradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width);
+    overlayGradient.addColorStop(0, 'rgba(26, 15, 62, 0.95)');
+    overlayGradient.addColorStop(1, 'rgba(10, 10, 30, 0.98)');
+    ctx.fillStyle = overlayGradient;
     ctx.fillRect(0, 0, width, height);
     
-    // Title
-    ctx.fillStyle = '#e9d5ff';
-    ctx.font = 'bold 32px "Outfit", sans-serif';
+    // Decorative top border
+    const topGradient = ctx.createLinearGradient(0, 0, width, 0);
+    topGradient.addColorStop(0, 'transparent');
+    topGradient.addColorStop(0.5, 'rgba(139, 92, 246, 0.6)');
+    topGradient.addColorStop(1, 'transparent');
+    ctx.fillStyle = topGradient;
+    ctx.fillRect(0, 0, width, 3);
+    
+    // Title with glow
+    ctx.shadowColor = 'rgba(139, 92, 246, 0.8)';
+    ctx.shadowBlur = 20;
+    const titleGradient = ctx.createLinearGradient(width / 2 - 200, 0, width / 2 + 200, 0);
+    titleGradient.addColorStop(0, '#8b5cf6');
+    titleGradient.addColorStop(0.5, '#fbbf24');
+    titleGradient.addColorStop(1, '#8b5cf6');
+    ctx.fillStyle = titleGradient;
+    ctx.font = 'bold 36px "Outfit", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Your Three-Card Reading', width / 2, 60);
+    ctx.fillText('✨ Your Three-Card Reading ✨', width / 2, 60);
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    
+    // Subtitle
+    ctx.fillStyle = 'rgba(233, 213, 255, 0.7)';
+    ctx.font = '16px "Space Grotesk", sans-serif';
+    ctx.fillText('The cards have spoken...', width / 2, 90);
     
     // Positions
-    const positions = ['Past', 'Present', 'Future'];
+    const positions = ['🌅 The Past', '⭐ The Present', '🌙 The Future'];
+    const positionColors = ['#fb923c', '#fbbf24', '#8b5cf6'];
     const cardY = 130;
-    const cardSpacing = height / 4;
+    const cardSpacing = height / 4.5;
     
     this.drawnCards.forEach((card, index) => {
       const y = cardY + index * cardSpacing;
       
+      // Card container background
+      const containerGradient = ctx.createLinearGradient(40, y - 10, 40, y + 100);
+      containerGradient.addColorStop(0, 'rgba(139, 92, 246, 0.1)');
+      containerGradient.addColorStop(1, 'rgba(139, 92, 246, 0.05)');
+      ctx.fillStyle = containerGradient;
+      ctx.fillRect(40, y - 10, width - 80, cardSpacing - 10);
+      
+      // Left accent bar
+      ctx.fillStyle = positionColors[index];
+      ctx.fillRect(40, y - 10, 4, cardSpacing - 10);
+      
       // Position label
-      ctx.fillStyle = '#a78bfa';
-      ctx.font = 'bold 20px "Space Grotesk", sans-serif';
+      ctx.fillStyle = positionColors[index];
+      ctx.font = 'bold 22px "Outfit", sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(positions[index], 50, y);
+      ctx.fillText(positions[index], 60, y + 10);
       
-      // Card name
+      // Card name with orientation badge
       ctx.fillStyle = '#e9d5ff';
-      ctx.font = 'bold 18px "Outfit", sans-serif';
-      ctx.fillText(`${card.name} (${card.orientation})`, 50, y + 30);
+      ctx.font = 'bold 20px "Outfit", sans-serif';
+      ctx.fillText(card.name, 60, y + 40);
       
-      // Meaning
-      ctx.fillStyle = '#d4d4d8';
-      ctx.font = '16px "Space Grotesk", sans-serif';
+      // Orientation badge
+      const badgeX = 60 + ctx.measureText(card.name).width + 15;
+      const badgeWidth = 80;
+      ctx.fillStyle = card.isReversed ? 'rgba(252, 165, 165, 0.2)' : 'rgba(134, 239, 172, 0.2)';
+      ctx.fillRect(badgeX, y + 25, badgeWidth, 22);
+      ctx.strokeStyle = card.isReversed ? '#fca5a5' : '#86efac';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(badgeX, y + 25, badgeWidth, 22);
+      ctx.fillStyle = card.isReversed ? '#fca5a5' : '#86efac';
+      ctx.font = 'bold 11px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(card.orientation.toUpperCase(), badgeX + badgeWidth / 2, y + 40);
+      ctx.textAlign = 'left';
+      
+      // Meaning with better formatting
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '15px "Space Grotesk", sans-serif';
       
       // Word wrap meaning
-      const maxWidth = width - 100;
+      const maxWidth = width - 120;
       const words = card.meaning.split(' ');
       let line = '';
-      let lineY = y + 60;
+      let lineY = y + 70;
       words.forEach((word, i) => {
         const testLine = line + word + ' ';
         const metrics = ctx.measureText(testLine);
         if (metrics.width > maxWidth && i > 0) {
-          ctx.fillText(line, 50, lineY);
+          ctx.fillText(line, 60, lineY);
           line = word + ' ';
-          lineY += 24;
+          lineY += 22;
         } else {
           line = testLine;
         }
       });
-      ctx.fillText(line, 50, lineY);
+      ctx.fillText(line, 60, lineY);
     });
     
-    // New reading button
-    const buttonY = height - 80;
-    ctx.fillStyle = 'rgba(88, 28, 135, 0.9)';
-    ctx.fillRect(width / 2 - 120, buttonY, 240, 50);
+    // New reading button with glow
+    const buttonY = height - 90;
+    const buttonWidth = 280;
+    const buttonHeight = 55;
+    const buttonX = width / 2 - buttonWidth / 2;
+    
+    // Button glow
+    const buttonGlow = ctx.createRadialGradient(width / 2, buttonY + 27, 0, width / 2, buttonY + 27, 150);
+    buttonGlow.addColorStop(0, 'rgba(139, 92, 246, 0.3)');
+    buttonGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = buttonGlow;
+    ctx.fillRect(buttonX - 50, buttonY - 25, buttonWidth + 100, buttonHeight + 50);
+    
+    // Button background
+    const buttonGradient = ctx.createLinearGradient(buttonX, buttonY, buttonX + buttonWidth, buttonY);
+    buttonGradient.addColorStop(0, '#7c3aed');
+    buttonGradient.addColorStop(0.5, '#8b5cf6');
+    buttonGradient.addColorStop(1, '#7c3aed');
+    ctx.fillStyle = buttonGradient;
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    
+    // Button border
     ctx.strokeStyle = '#a78bfa';
     ctx.lineWidth = 2;
-    ctx.strokeRect(width / 2 - 120, buttonY, 240, 50);
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
     
-    ctx.fillStyle = '#e9d5ff';
+    // Button text
+    ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 20px "Space Grotesk", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('New Reading', width / 2, buttonY + 30);
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 4;
+    ctx.fillText('✨ New Reading ✨', width / 2, buttonY + 35);
+    ctx.shadowBlur = 0;
     
-    this.newReadingBounds = { x: width / 2 - 120, y: buttonY, width: 240, height: 50 };
+    this.newReadingBounds = { x: buttonX, y: buttonY, width: buttonWidth, height: buttonHeight };
   }
 
   handleClick(event) {
@@ -613,6 +831,7 @@ export class TarotGame {
     const y = event.clientY - rect.top;
     
     let cursor = 'default';
+    let hovering = false;
     
     // Check if hovering over button
     if (this.buttonBounds && this.drawnCards.length === 0) {
@@ -623,12 +842,16 @@ export class TarotGame {
     }
     
     // Check if hovering over cards
+    this.hoveredCard = null;
     if (this.cardBounds && this.drawnCards.length > 0) {
       this.cardBounds.forEach((bounds, index) => {
         if (bounds && x >= bounds.x && x <= bounds.x + bounds.width && 
-            y >= bounds.y && y <= bounds.y + bounds.height && 
-            !this.drawnCards[index].revealed) {
-          cursor = 'pointer';
+            y >= bounds.y - 10 && y <= bounds.y + bounds.height) {
+          this.hoveredCard = index;
+          if (!this.drawnCards[index].revealed) {
+            cursor = 'pointer';
+          }
+          hovering = true;
         }
       });
     }
