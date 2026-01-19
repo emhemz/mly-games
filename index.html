@@ -48,21 +48,27 @@
             </div>
 
             <!-- Game Card 2 -->
-            <div class="game-card">
+            <div class="game-card" data-game="breakout">
               <div class="game-card-image">
                 <div class="placeholder-game-icon">
                   <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="40" y="60" width="120" height="80" rx="10" fill="#FF8C42" opacity="0.4"/>
-                    <circle cx="80" cy="100" r="15" fill="#4169E1" opacity="0.6"/>
-                    <circle cx="120" cy="100" r="15" fill="#FFD700" opacity="0.6"/>
-                    <rect x="70" y="130" width="60" height="8" rx="4" fill="white" opacity="0.7"/>
+                    <!-- Rainbow breakout thumbnail -->
+                    <rect x="35" y="40" width="130" height="110" rx="10" fill="rgba(0,0,0,0.25)"/>
+                    <rect x="45" y="55" width="110" height="10" fill="#ff3b30"/>
+                    <rect x="45" y="67" width="110" height="10" fill="#ff9500"/>
+                    <rect x="45" y="79" width="110" height="10" fill="#ffd60a"/>
+                    <rect x="45" y="91" width="110" height="10" fill="#34c759"/>
+                    <rect x="45" y="103" width="110" height="10" fill="#0a84ff"/>
+                    <rect x="45" y="115" width="110" height="10" fill="#5e5ce6"/>
+                    <rect x="78" y="140" width="44" height="6" rx="3" fill="white" opacity="0.8"/>
+                    <circle cx="110" cy="132" r="4" fill="white" opacity="0.9"/>
                   </svg>
                 </div>
               </div>
               <div class="game-card-content">
-                <h3 class="game-title">Mystery Game</h3>
-                <p class="game-description">Adventures await in the unknown</p>
-                <button class="play-button" disabled>Coming Soon</button>
+                <h3 class="game-title">Rainbow Breakout</h3>
+                <p class="game-description">Smash the rainbow bricks</p>
+                <button class="play-button" data-game="breakout">Play Now</button>
               </div>
             </div>
 

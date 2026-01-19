@@ -2,6 +2,7 @@ import './style.css';
 import { GameEngine } from './core/engine.js';
 import { PlaceholderGame } from './games/placeholder.js';
 import { TarotGame } from './games/tarot.js';
+import { BreakoutGame } from './games/breakout.js';
 
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas);
@@ -10,6 +11,7 @@ const app = document.getElementById('app');
 const games = {
   placeholder: PlaceholderGame,
   tarot: TarotGame,
+  breakout: BreakoutGame,
 };
 
 let currentGame = null;
@@ -18,6 +20,7 @@ let currentGame = null;
 const ROUTES = {
   home: '#/',
   tarot: '#/tarot',
+  breakout: '#/breakout',
 };
 
 function normalizeHash() {
@@ -107,12 +110,9 @@ document.addEventListener('click', (event) => {
   if (button && button.dataset.game) {
     const gameName = button.dataset.game;
     // Route-based navigation (enables browser back/forward)
-    if (gameName === 'tarot') {
-      setRoute(ROUTES.tarot);
-    } else {
-      // fallback for future games
-      startGame(gameName);
-    }
+    if (gameName === 'tarot') setRoute(ROUTES.tarot);
+    else if (gameName === 'breakout') setRoute(ROUTES.breakout);
+    else startGame(gameName);
   }
   
   // Handle back button
@@ -180,6 +180,18 @@ function route() {
       startGame('tarot');
     } else {
       // Ensure correct visibility if user used back/forward quickly
+      app.style.display = 'none';
+      canvas.style.display = 'block';
+      cursor.style.display = 'none';
+      document.body.style.cursor = 'default';
+    }
+    return;
+  }
+
+  if (hash === ROUTES.breakout) {
+    if (!(currentGame instanceof BreakoutGame)) {
+      startGame('breakout');
+    } else {
       app.style.display = 'none';
       canvas.style.display = 'block';
       cursor.style.display = 'none';
