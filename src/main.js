@@ -5,6 +5,7 @@ import { TarotGame } from './games/tarot.js';
 import { BreakoutGame } from './games/breakout.js';
 import { SolitaireGame } from './games/solitaire.js';
 import { BoatGame } from './games/boat.js';
+import { PacManGame } from './games/pacman.js';
 
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas);
@@ -16,6 +17,7 @@ const games = {
   breakout: BreakoutGame,
   solitaire: SolitaireGame,
   boat: BoatGame,
+  pacman: PacManGame,
 };
 
 let currentGame = null;
@@ -27,6 +29,7 @@ const ROUTES = {
   breakout: '#/breakout',
   solitaire: '#/solitaire',
   boat: '#/boat',
+  pacman: '#/pacman',
 };
 
 function normalizeHash() {
