@@ -62,6 +62,16 @@ export class BreakoutGame {
       usingMouse: false,
     };
 
+    this._canvasPoint = (clientX, clientY) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    };
+
     this._onKeyDown = (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') this.input.left = true;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') this.input.right = true;
@@ -74,20 +84,29 @@ export class BreakoutGame {
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') this.input.right = false;
     };
 
-    this._onMouseMove = (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      this.input.mouseX = e.clientX - rect.left;
+    this._onPointerMove = (e) => {
+      const p = this._canvasPoint(e.clientX, e.clientY);
+      this.input.mouseX = p.x;
       this.input.usingMouse = true;
     };
 
-    this._onClick = () => {
+    this._onPointerDown = (e) => {
+      this.audio.resume();
+      this.input.usingMouse = true;
       this._launchBall();
+      if (typeof this.canvas.setPointerCapture === 'function') {
+        try {
+          this.canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }
     };
 
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
-    this.canvas.addEventListener('mousemove', this._onMouseMove);
-    this.canvas.addEventListener('click', this._onClick);
+    this.canvas.addEventListener('pointermove', this._onPointerMove);
+    this.canvas.addEventListener('pointerdown', this._onPointerDown);
   }
 
   _buildBricks() {
@@ -345,8 +364,8 @@ export class BreakoutGame {
     this.destroyed = true;
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
-    this.canvas.removeEventListener('mousemove', this._onMouseMove);
-    this.canvas.removeEventListener('click', this._onClick);
+    this.canvas.removeEventListener('pointermove', this._onPointerMove);
+    this.canvas.removeEventListener('pointerdown', this._onPointerDown);
 
     if (this.audio) this.audio.close();
   }

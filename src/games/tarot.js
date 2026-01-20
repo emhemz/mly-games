@@ -33,6 +33,7 @@ export class TarotGame {
     // Resize canvas
     this.canvas.width = 1200;
     this.canvas.height = 800;
+    this.canvas.style.touchAction = 'none';
     
     // Shuffle the deck
     this.shuffledDeck = shuffleDeck(tarotDeck);
@@ -48,8 +49,8 @@ export class TarotGame {
     // Setup handlers (bound once)
     this._onClick = this.handleClick.bind(this);
     this._onMove = this.handleMouseMove.bind(this);
-    this.canvas.addEventListener('click', this._onClick);
-    this.canvas.addEventListener('mousemove', this._onMove);
+    this.canvas.addEventListener('pointerdown', this._onClick);
+    this.canvas.addEventListener('pointermove', this._onMove);
     
     // Button state
     this.showButton = true;
@@ -995,8 +996,10 @@ export class TarotGame {
     }
 
     const rect = this.canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
     
     // Check start button
     if (this.buttonBounds && this.drawnCards.length === 0) {
@@ -1043,8 +1046,10 @@ export class TarotGame {
 
   handleMouseMove(event) {
     const rect = this.canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
     
     let cursor = 'default';
     let hovering = false;
@@ -1141,8 +1146,8 @@ export class TarotGame {
 
   destroy() {
     this.destroyed = true;
-    if (this._onClick) this.canvas.removeEventListener('click', this._onClick);
-    if (this._onMove) this.canvas.removeEventListener('mousemove', this._onMove);
+    if (this._onClick) this.canvas.removeEventListener('pointerdown', this._onClick);
+    if (this._onMove) this.canvas.removeEventListener('pointermove', this._onMove);
 
     // Stop audio
     if (this.audio) this.audio.close();

@@ -67,19 +67,32 @@ export class SolitaireGame {
     this.anims = []; // { cardId, fromX, fromY, toX, toY, start, dur }
     this.drawingUntil = 0;
 
-    this._onMouseMove = (e) => {
+    this._canvasPoint = (clientX, clientY) => {
       const rect = this.canvas.getBoundingClientRect();
-      this.mouse.x = e.clientX - rect.left;
-      this.mouse.y = e.clientY - rect.top;
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    };
+
+    this._onPointerMove = (e) => {
+      const p = this._canvasPoint(e.clientX, e.clientY);
+      this.mouse.x = p.x;
+      this.mouse.y = p.y;
       if (this.drag) {
         this.drag.x = this.mouse.x - this.drag.offsetX;
         this.drag.y = this.mouse.y - this.drag.offsetY;
       }
     };
 
-    this._onMouseDown = (e) => {
+    this._onPointerDown = (e) => {
       e.preventDefault();
       this.mouse.down = true;
+      const p = this._canvasPoint(e.clientX, e.clientY);
+      this.mouse.x = p.x;
+      this.mouse.y = p.y;
       const { x, y } = this.mouse;
 
       // Resume audio on first user gesture (browser policy)
@@ -118,9 +131,17 @@ export class SolitaireGame {
         }
         this._startDragFromTableau(hit.pileIndex, hit.cardIndex, x, y);
       }
+
+      if (typeof this.canvas.setPointerCapture === 'function') {
+        try {
+          this.canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }
     };
 
-    this._onMouseUp = (e) => {
+    this._onPointerUp = (e) => {
       e.preventDefault();
       this.mouse.down = false;
       if (!this.drag) return;
@@ -131,9 +152,9 @@ export class SolitaireGame {
       if (e.key === 'r' || e.key === 'R') this._newGame();
     };
 
-    this.canvas.addEventListener('mousemove', this._onMouseMove);
-    this.canvas.addEventListener('mousedown', this._onMouseDown);
-    window.addEventListener('mouseup', this._onMouseUp);
+    this.canvas.addEventListener('pointermove', this._onPointerMove);
+    this.canvas.addEventListener('pointerdown', this._onPointerDown);
+    window.addEventListener('pointerup', this._onPointerUp);
     window.addEventListener('keydown', this._onKeyDown);
   }
 
@@ -946,9 +967,9 @@ export class SolitaireGame {
 
   destroy() {
     this.destroyed = true;
-    this.canvas.removeEventListener('mousemove', this._onMouseMove);
-    this.canvas.removeEventListener('mousedown', this._onMouseDown);
-    window.removeEventListener('mouseup', this._onMouseUp);
+    this.canvas.removeEventListener('pointermove', this._onPointerMove);
+    this.canvas.removeEventListener('pointerdown', this._onPointerDown);
+    window.removeEventListener('pointerup', this._onPointerUp);
     window.removeEventListener('keydown', this._onKeyDown);
 
     this.audio?.close?.();

@@ -12,7 +12,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
-  cursor: none; /* Hide default cursor */
+  cursor: default;
 }
 
 /* Custom Cursor */
@@ -450,10 +450,15 @@ body {
 /* Game Canvas (hidden by default) */
 #game-canvas {
   display: none;
-  margin: 2rem auto;
+  margin: 1.25rem auto;
   border: 2px solid rgba(59, 130, 246, 0.3);
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: min(calc(100vw - 24px), 1200px);
+  height: auto;
+  aspect-ratio: 3 / 2;
+  max-height: calc(100vh - 110px);
+  touch-action: none; /* allow pointer events in canvas games */
 }
 
 /* Back Button */
@@ -509,6 +514,36 @@ body {
   
   .deco-item {
     font-size: 2rem;
+  }
+
+  #game-canvas {
+    margin: 0.75rem auto;
+    max-height: calc(100vh - 80px);
+  }
+
+  .back-button {
+    top: 12px;
+    left: 12px;
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+}
+
+/* Custom cursor only on devices that actually have hover */
+@media (hover: hover) and (pointer: fine) {
+  body {
+    cursor: none;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .custom-cursor,
+  .cursor-trail {
+    display: none !important;
+  }
+
+  body {
+    cursor: default;
   }
 }
 
