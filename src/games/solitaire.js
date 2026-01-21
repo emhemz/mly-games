@@ -58,6 +58,9 @@ export class SolitaireGame {
       won: false,
     };
 
+    // Secret cheat mode 😎
+    this.cheatMode = false;
+
     this._newGame();
 
     // input
@@ -149,7 +152,18 @@ export class SolitaireGame {
     };
 
     this._onKeyDown = (e) => {
-      if (e.key === 'r' || e.key === 'R') this._newGame();
+      if (e.key === 'r' || e.key === 'R') {
+        this._newGame();
+      } else if (e.key === 'w' || e.key === 'W') {
+        // Secret auto-win! 🎉
+        this._autoWin();
+      } else if (e.key === 'c' || e.key === 'C') {
+        // Toggle cheat mode (any move allowed)
+        this.cheatMode = !this.cheatMode;
+        this.state.message = this.cheatMode 
+          ? '🎮 CHEAT MODE ON — Any move allowed!' 
+          : 'Click stock to draw 3 • Drag cards • Double-click to send to foundation';
+      }
     };
 
     this.canvas.addEventListener('pointermove', this._onPointerMove);
@@ -396,10 +410,16 @@ export class SolitaireGame {
 
   _tryMoveToFoundation(card, from, fKey) {
     if (!card.faceUp) return false;
-    if (card.suit !== fKey) return false;
+    
+    // Cheat mode: skip validation! 😎
+    if (!this.cheatMode) {
+      if (card.suit !== fKey) return false;
+      const pile = this.foundations[fKey];
+      const needRank = pile.length === 0 ? 1 : pile[pile.length - 1].rank + 1;
+      if (card.rank !== needRank) return false;
+    }
+    
     const pile = this.foundations[fKey];
-    const needRank = pile.length === 0 ? 1 : pile[pile.length - 1].rank + 1;
-    if (card.rank !== needRank) return false;
 
     // Remove from origin
     if (from.type === 'waste') {
@@ -420,13 +440,15 @@ export class SolitaireGame {
     const movingTop = cards[0];
 
     // Validate tableau placement rules
-    if (dest.length === 0) {
-      if (movingTop.rank !== 13) return false; // only King on empty
-    } else {
-      const top = dest[dest.length - 1];
-      if (!top.faceUp) return false;
-      if (top.color === movingTop.color) return false;
-      if (top.rank !== movingTop.rank + 1) return false;
+    if (!this.cheatMode) {
+      if (dest.length === 0) {
+        if (movingTop.rank !== 13) return false; // only King on empty
+      } else {
+        const top = dest[dest.length - 1];
+        if (!top.faceUp) return false;
+        if (top.color === movingTop.color) return false;
+        if (top.rank !== movingTop.rank + 1) return false;
+      }
     }
 
     // Remove from origin
@@ -458,6 +480,39 @@ export class SolitaireGame {
       if (a.rank !== b.rank + 1) return false;
     }
     return true;
+  }
+
+  _autoWin() {
+    // Secret auto-win function! 🎉
+    // Flip all cards face up
+    for (const card of this.stock) card.faceUp = true;
+    for (const card of this.waste) card.faceUp = true;
+    for (const pile of this.tableau) {
+      for (const card of pile) card.faceUp = true;
+    }
+
+    // Collect all cards
+    const allCards = [
+      ...this.stock,
+      ...this.waste,
+      ...this.tableau.flat(),
+    ];
+
+    // Clear everything
+    this.stock = [];
+    this.waste = [];
+    for (let i = 0; i < 7; i++) this.tableau[i] = [];
+
+    // Sort cards by rank and place in foundations
+    for (const suit of SUITS) {
+      const suitCards = allCards
+        .filter(c => c.suit === suit)
+        .sort((a, b) => a.rank - b.rank);
+      this.foundations[suit] = suitCards;
+    }
+
+    this.audio?.playWin?.();
+    this._checkWin();
   }
 
   _pilePositions() {
