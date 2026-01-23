@@ -6,6 +6,7 @@ import { BreakoutGame } from './games/breakout.js';
 import { SolitaireGame } from './games/solitaire.js';
 import { BoatGame } from './games/boat.js';
 import { PacManGame } from './games/pacman.js';
+import { RunGame } from './games/run.js';
 
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas);
@@ -18,6 +19,7 @@ const games = {
   solitaire: SolitaireGame,
   boat: BoatGame,
   pacman: PacManGame,
+  run: RunGame,
 };
 
 let currentGame = null;
@@ -30,6 +32,7 @@ const ROUTES = {
   solitaire: '#/solitaire',
   boat: '#/boat',
   pacman: '#/pacman',
+  run: '#/run',
 };
 
 function normalizeHash() {
@@ -123,6 +126,7 @@ document.addEventListener('click', (event) => {
     else if (gameName === 'breakout') setRoute(ROUTES.breakout);
     else if (gameName === 'solitaire') setRoute(ROUTES.solitaire);
     else if (gameName === 'boat') setRoute(ROUTES.boat);
+    else if (gameName === 'run') setRoute(ROUTES.run);
     else startGame(gameName);
   }
   
@@ -226,6 +230,18 @@ function route() {
   if (hash === ROUTES.boat) {
     if (!(currentGame instanceof BoatGame)) {
       startGame('boat');
+    } else {
+      app.style.display = 'none';
+      canvas.style.display = 'block';
+      cursor.style.display = 'none';
+      document.body.style.cursor = 'default';
+    }
+    return;
+  }
+
+  if (hash === ROUTES.run) {
+    if (!(currentGame instanceof RunGame)) {
+      startGame('run');
     } else {
       app.style.display = 'none';
       canvas.style.display = 'block';
