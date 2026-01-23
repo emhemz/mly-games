@@ -18,6 +18,8 @@ export class RunGame {
       speed: 300, // forward speed (z velocity)
       jumping: false,
       jumpTimer: 0,
+      jumpHeight: 0,
+      jumpVelocity: 0,
     };
 
     // Camera rotation for smooth wall transitions
@@ -59,13 +61,16 @@ export class RunGame {
 
     // Event listeners
     this._onKeyDown = (e) => {
-      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+      if (e.key === 'Tab' || e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
         this.input.jump = true;
       }
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
         this.input.left = true;
       }
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
         this.input.right = true;
       }
       if (e.key === 'r' || e.key === 'R') {
@@ -74,7 +79,7 @@ export class RunGame {
     };
 
     this._onKeyUp = (e) => {
-      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+      if (e.key === 'Tab' || e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         this.input.jump = false;
       }
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
@@ -110,6 +115,8 @@ export class RunGame {
       speed: 300,
       jumping: false,
       jumpTimer: 0,
+      jumpHeight: 0,
+      jumpVelocity: 0,
     };
     this.cameraRotation = 0;
     this.targetRotation = 0;
@@ -216,33 +223,54 @@ export class RunGame {
     this.player.speed = Math.min(600, this.player.speed);
 
     // Horizontal movement
-    const moveSpeed = 3;
-    if (this.input.left) this.player.vx = -moveSpeed * dt;
-    else if (this.input.right) this.player.vx = moveSpeed * dt;
-    else this.player.vx *= 0.8; // friction
+    const moveSpeed = 4;
+    if (this.input.left) this.player.vx -= moveSpeed * dt;
+    else if (this.input.right) this.player.vx += moveSpeed * dt;
+    else this.player.vx *= 0.85; // friction
 
     this.player.x += this.player.vx;
-    this.player.x = Math.max(-1, Math.min(1, this.player.x));
 
-    // Jump to adjacent walls
+    // Check if player reached edge of wall - if so, rotate to next wall!
+    if (this.player.x <= -1.1) {
+      // Going left - rotate to left wall
+      this.player.wall = (this.player.wall + 3) % 4; // counter-clockwise
+      this.targetRotation = -this.player.wall * 90;
+      this.player.x = 0; // reset position on new wall
+      this.player.vx = 0;
+      this._createParticles(0, 0, this.player.z, 15);
+    } else if (this.player.x >= 1.1) {
+      // Going right - rotate to right wall
+      this.player.wall = (this.player.wall + 1) % 4; // clockwise
+      this.targetRotation = -this.player.wall * 90;
+      this.player.x = 0; // reset position on new wall
+      this.player.vx = 0;
+      this._createParticles(0, 0, this.player.z, 15);
+    }
+
+    // Clamp position (with some leeway for edge detection)
+    this.player.x = Math.max(-1.2, Math.min(1.2, this.player.x));
+
+    // Jump up (away from current wall)
     if (this.input.jump && !this.player.jumping && this.player.jumpTimer <= 0) {
       this.player.jumping = true;
-      this.player.jumpTimer = 0.3;
-      
-      // Determine which wall to jump to based on current wall
-      // If no horizontal input, cycle through walls
-      const nextWall = (this.player.wall + 1) % 4;
-      this.player.wall = nextWall;
-      this.targetRotation = -nextWall * 90;
+      this.player.jumpTimer = 0.4;
+      this.player.jumpHeight = 0;
+      this.player.jumpVelocity = 800;
       
       this._createParticles(this.player.x * 200, 0, this.player.z, 20);
     }
 
-    if (this.player.jumpTimer > 0) {
-      this.player.jumpTimer -= dt;
-      if (this.player.jumpTimer <= 0) {
+    if (this.player.jumping) {
+      this.player.jumpVelocity -= 2400 * dt; // gravity
+      this.player.jumpHeight += this.player.jumpVelocity * dt;
+      
+      if (this.player.jumpHeight <= 0) {
+        this.player.jumpHeight = 0;
         this.player.jumping = false;
+        this.player.jumpTimer = 0;
       }
+    } else if (this.player.jumpTimer > 0) {
+      this.player.jumpTimer -= dt;
     }
 
     // Smooth camera rotation to match current wall
@@ -353,14 +381,14 @@ export class RunGame {
       ctx.fillText('Press R to restart', w / 2, h / 2 + 60);
     } else {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(20, 18, 380, 54);
+      ctx.fillRect(20, 18, 420, 54);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
       ctx.font = '700 20px "Space Grotesk", system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(`Run • ${this.score}`, 36, 48);
       ctx.font = '500 14px "Space Grotesk", system-ui, sans-serif';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.fillText('SPACE to flip • Arrow keys to move • R to reset', 36, 68);
+      ctx.fillText('← → to move & flip walls • TAB/SPACE to jump • R to reset', 36, 68);
     }
     ctx.restore();
   }
@@ -499,7 +527,7 @@ export class RunGame {
     
     // Player position on current wall
     const x = this.player.x * 150;
-    const y = 150; // distance from center
+    const y = 150 - this.player.jumpHeight * 0.15; // jump away from wall
     
     // Draw player as a small creature
     ctx.save();
@@ -511,14 +539,15 @@ export class RunGame {
     ctx.ellipse(0, 0, 12, 16, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Arms
+    // Arms (animate when jumping)
+    const armAngle = this.player.jumping ? 0.3 : 0;
     ctx.strokeStyle = '#9ca3af';
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(-8, 2);
-    ctx.lineTo(-14, -2);
+    ctx.lineTo(-14 - Math.cos(armAngle) * 4, -2 - Math.sin(armAngle) * 8);
     ctx.moveTo(8, 2);
-    ctx.lineTo(14, -2);
+    ctx.lineTo(14 + Math.cos(armAngle) * 4, -2 - Math.sin(armAngle) * 8);
     ctx.stroke();
     
     // Eyes
