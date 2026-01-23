@@ -11,47 +11,62 @@ export class RunGame {
 
     // Player state
     this.player = {
-      x: 0, // rotation around tunnel (0-360 degrees)
-      y: 0, // distance from center
-      targetY: 120, // target distance from center (on wall)
-      gravity: 0, // which wall we're on (0=bottom, 90=right, 180=top, 270=left)
+      x: 0, // position on current wall (-1 to 1, center is 0)
+      z: 100, // how far forward we've traveled
+      wall: 0, // which wall (0=floor, 1=right, 2=ceiling, 3=left)
+      vx: 0, // velocity x
+      speed: 300, // forward speed (z velocity)
       jumping: false,
-      jumpSpeed: 0,
-      speed: 300, // forward speed
-      rotation: 0, // visual rotation
+      jumpTimer: 0,
     };
 
-    // Camera/perspective
-    this.camera = {
-      z: 0, // how far we've traveled
-      rotation: 0, // tunnel rotation
-      tilt: 0,
-    };
+    // Camera rotation for smooth wall transitions
+    this.cameraRotation = 0;
+    this.targetRotation = 0;
 
-    // Platforms/obstacles
-    this.platforms = [];
+    // Tunnel segments (platforms/floors with holes)
+    this.segments = [];
     this.particles = [];
+    this.stars = []; // background stars
     this.score = 0;
     this.gameOver = false;
 
     // Input
     this.input = {
       jump: false,
+      left: false,
+      right: false,
       pointerDown: false,
     };
 
     this._time = 0;
-    this._lastPlatformZ = 0;
+    this._lastSegmentZ = 0;
 
-    // Generate initial platforms
-    for (let i = 0; i < 20; i++) {
-      this._generatePlatform();
+    // Generate background stars
+    for (let i = 0; i < 200; i++) {
+      this.stars.push({
+        x: (Math.random() - 0.5) * 3000,
+        y: (Math.random() - 0.5) * 3000,
+        z: Math.random() * 5000,
+        size: 0.5 + Math.random() * 1.5,
+      });
+    }
+
+    // Generate initial tunnel segments
+    for (let i = 0; i < 30; i++) {
+      this._generateSegment();
     }
 
     // Event listeners
     this._onKeyDown = (e) => {
       if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         this.input.jump = true;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        this.input.left = true;
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        this.input.right = true;
       }
       if (e.key === 'r' || e.key === 'R') {
         this._reset();
@@ -61,6 +76,12 @@ export class RunGame {
     this._onKeyUp = (e) => {
       if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         this.input.jump = false;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        this.input.left = false;
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        this.input.right = false;
       }
     };
 
@@ -83,60 +104,98 @@ export class RunGame {
   _reset() {
     this.player = {
       x: 0,
-      y: 0,
-      targetY: 120,
-      gravity: 0,
-      jumping: false,
-      jumpSpeed: 0,
+      z: 100,
+      wall: 0,
+      vx: 0,
       speed: 300,
-      rotation: 0,
+      jumping: false,
+      jumpTimer: 0,
     };
-    this.camera = {
-      z: 0,
-      rotation: 0,
-      tilt: 0,
-    };
-    this.platforms = [];
-    this._lastPlatformZ = 0;
-    for (let i = 0; i < 20; i++) {
-      this._generatePlatform();
+    this.cameraRotation = 0;
+    this.targetRotation = 0;
+    this.segments = [];
+    this._lastSegmentZ = 0;
+    for (let i = 0; i < 30; i++) {
+      this._generateSegment();
     }
     this.score = 0;
     this.gameOver = false;
     this.particles = [];
   }
 
-  _generatePlatform() {
-    const z = this._lastPlatformZ + 200 + Math.random() * 400;
+  _generateSegment() {
+    const z = this._lastSegmentZ;
+    const length = 100;
     
-    // Random wall position (0, 90, 180, 270)
-    const walls = [0, 90, 180, 270];
-    const wall = walls[Math.floor(Math.random() * walls.length)];
-    
-    // Width of platform
-    const width = 60 + Math.random() * 80;
-    const angle = Math.random() * 360;
-    
-    this.platforms.push({
+    // Determine which walls have floor (0=floor, 1=right, 2=ceiling, 3=left)
+    // Early game: mostly just floor
+    const progress = z / 2000;
+    const segment = {
       z: z,
-      wall: wall, // which wall (gravity direction)
-      angle: angle, // position around the tunnel
-      width: width,
-      passed: false,
-    });
+      length: length,
+      walls: [
+        this._generateWallSegment(0, progress), // floor
+        this._generateWallSegment(1, progress), // right wall
+        this._generateWallSegment(2, progress), // ceiling
+        this._generateWallSegment(3, progress), // left wall
+      ],
+    };
     
-    this._lastPlatformZ = z;
+    this.segments.push(segment);
+    this._lastSegmentZ += length;
   }
 
-  _createParticles(x, y, count = 10) {
+  _generateWallSegment(wallIndex, progress) {
+    // Floor (wall 0) is most common in the beginning
+    let chance;
+    if (wallIndex === 0) {
+      // Floor: always there
+      chance = 1.0;
+    } else {
+      // Other walls: rare in beginning, more common later
+      chance = Math.max(0, progress - 0.3) * 0.8;
+    }
+    
+    const hasPlatform = Math.random() < chance;
+    
+    if (!hasPlatform) return null;
+    
+    // Generate holes in the platform
+    const holes = [];
+    
+    // No holes at the start for floor, gradually add them
+    let numHoles = 0;
+    if (wallIndex === 0) {
+      // Floor: start with no holes, gradually add them
+      if (progress > 0.3) {
+        numHoles = Math.floor(Math.random() * Math.min(3, (progress - 0.3) * 5));
+      }
+    } else {
+      // Other walls: more holes
+      numHoles = Math.floor(Math.random() * (1 + progress * 2));
+    }
+    
+    for (let i = 0; i < numHoles; i++) {
+      holes.push({
+        x: (Math.random() - 0.5) * 1.6, // -0.8 to 0.8
+        width: 0.2 + Math.random() * 0.3,
+      });
+    }
+    
+    return { holes };
+  }
+
+  _createParticles(x, y, z, count = 10) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 50 + Math.random() * 100;
       this.particles.push({
         x: x,
         y: y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
+        z: z,
+        vx: Math.cos(angle) * speed * 0.5,
+        vy: Math.sin(angle) * speed * 0.5,
+        vz: (Math.random() - 0.5) * 100,
         life: 1,
         size: 2 + Math.random() * 3,
       });
@@ -149,98 +208,89 @@ export class RunGame {
     this._time += dt;
 
     // Move forward
-    this.camera.z += this.player.speed * dt;
-    this.score = Math.floor(this.camera.z / 10);
+    this.player.z += this.player.speed * dt;
+    this.score = Math.floor(this.player.z / 10);
 
     // Increase speed over time
     this.player.speed += dt * 10;
-    this.player.speed = Math.min(800, this.player.speed);
+    this.player.speed = Math.min(600, this.player.speed);
 
-    // Rotate tunnel slowly
-    this.camera.rotation += dt * 15;
+    // Horizontal movement
+    const moveSpeed = 3;
+    if (this.input.left) this.player.vx = -moveSpeed * dt;
+    else if (this.input.right) this.player.vx = moveSpeed * dt;
+    else this.player.vx *= 0.8; // friction
 
-    // Jump mechanics
-    if (this.input.jump && !this.player.jumping) {
+    this.player.x += this.player.vx;
+    this.player.x = Math.max(-1, Math.min(1, this.player.x));
+
+    // Jump to adjacent walls
+    if (this.input.jump && !this.player.jumping && this.player.jumpTimer <= 0) {
       this.player.jumping = true;
-      this.player.jumpSpeed = -400;
-      this._createParticles(600, 400, 15);
+      this.player.jumpTimer = 0.3;
+      
+      // Determine which wall to jump to based on current wall
+      // If no horizontal input, cycle through walls
+      const nextWall = (this.player.wall + 1) % 4;
+      this.player.wall = nextWall;
+      this.targetRotation = -nextWall * 90;
+      
+      this._createParticles(this.player.x * 200, 0, this.player.z, 20);
     }
 
-    if (this.player.jumping) {
-      // Apply jump physics
-      this.player.y += this.player.jumpSpeed * dt;
-      this.player.jumpSpeed += 1200 * dt; // gravity
+    if (this.player.jumpTimer > 0) {
+      this.player.jumpTimer -= dt;
+      if (this.player.jumpTimer <= 0) {
+        this.player.jumping = false;
+      }
+    }
 
-      // Check if we're landing on a wall
-      // If y crosses from inner tunnel (0) to outer wall and back
-      if (this.player.y > this.player.targetY + 100) {
-        // We've jumped past the wall - check if we hit a platform
-        let landed = false;
-        
-        for (const platform of this.platforms) {
-          const relZ = platform.z - this.camera.z;
-          if (relZ > -50 && relZ < 50) {
-            // We're at the right Z position
-            // Check if our angle matches the platform
-            const playerAngle = (this.player.x + this.camera.rotation) % 360;
-            let angleDiff = Math.abs(playerAngle - platform.angle);
-            if (angleDiff > 180) angleDiff = 360 - angleDiff;
-            
-            if (angleDiff < platform.width / 2) {
-              // Landed on platform!
-              landed = true;
-              this.player.jumping = false;
-              this.player.jumpSpeed = 0;
-              this.player.y = 0;
-              this.player.gravity = platform.wall;
-              this.player.x = platform.angle - this.camera.rotation;
-              this._createParticles(600, 400, 20);
-              break;
-            }
+    // Smooth camera rotation to match current wall
+    const rotDiff = this.targetRotation - this.cameraRotation;
+    this.cameraRotation += rotDiff * dt * 8;
+
+    // Check for collision with floor/walls
+    const currentSegment = this.segments.find(
+      s => this.player.z >= s.z && this.player.z < s.z + s.length
+    );
+
+    if (currentSegment) {
+      const wall = currentSegment.walls[this.player.wall];
+      if (!wall) {
+        // No platform on this wall - fall into space!
+        this.gameOver = true;
+      } else {
+        // Check if player is in a hole
+        for (const hole of wall.holes) {
+          const holeLeft = hole.x - hole.width / 2;
+          const holeRight = hole.x + hole.width / 2;
+          if (this.player.x >= holeLeft && this.player.x <= holeRight) {
+            // Fell through a hole!
+            this.gameOver = true;
+            break;
           }
         }
-
-        if (!landed && this.player.y > 300) {
-          // Fell off!
-          this.gameOver = true;
-        }
       }
-    } else {
-      // Not jumping - stick to current wall
-      this.player.y = 0;
     }
 
-    // Generate new platforms as we move forward
-    while (this._lastPlatformZ < this.camera.z + 3000) {
-      this._generatePlatform();
+    // Generate new segments as we move forward
+    while (this._lastSegmentZ < this.player.z + 2000) {
+      this._generateSegment();
     }
 
-    // Remove old platforms
-    this.platforms = this.platforms.filter(p => p.z > this.camera.z - 500);
+    // Remove old segments
+    this.segments = this.segments.filter(s => s.z > this.player.z - 500);
 
     // Update particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      p.z += p.vz * dt;
       p.life -= dt * 2;
       if (p.life <= 0) {
         this.particles.splice(i, 1);
       }
-    }
-
-    // Create ambient particles
-    if (Math.random() < 0.3) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 100 + Math.random() * 150;
-      this.particles.push({
-        x: 600 + Math.cos(angle) * radius,
-        y: 400 + Math.sin(angle) * radius,
-        vx: 0,
-        vy: 0,
-        life: 0.5 + Math.random() * 0.5,
-        size: 1 + Math.random() * 2,
-      });
     }
   }
 
@@ -249,29 +299,36 @@ export class RunGame {
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    // Background - deep blue
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, '#1a1f3a');
-    gradient.addColorStop(1, '#2563eb');
-    ctx.fillStyle = gradient;
+    // Clear and draw space background
+    ctx.fillStyle = '#050510';
     ctx.fillRect(0, 0, w, h);
 
-    // Draw tunnel walls with 3D perspective
-    this._drawTunnel();
+    // Draw stars in space
+    this._drawStars();
 
-    // Draw platforms
-    this._drawPlatforms();
+    // Set up 3D transformation
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(this.cameraRotation * Math.PI / 180);
+
+    // Draw tunnel segments
+    this._drawTunnel();
 
     // Draw player
     this._drawPlayer();
 
     // Draw particles
-    ctx.save();
     for (const p of this.particles) {
-      ctx.globalAlpha = p.life;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      const relZ = p.z - this.player.z;
+      if (relZ > -200 && relZ < 1000) {
+        const scale = 400 / (relZ + 400);
+        ctx.globalAlpha = p.life * scale;
+        ctx.fillStyle = '#ffffff';
+        const size = p.size * scale;
+        ctx.fillRect(p.x * scale - size / 2, p.y * scale - size / 2, size, size);
+      }
     }
+
     ctx.restore();
 
     // HUD - reset all transforms and alpha
@@ -296,128 +353,157 @@ export class RunGame {
       ctx.fillText('Press R to restart', w / 2, h / 2 + 60);
     } else {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(20, 18, 320, 54);
+      ctx.fillRect(20, 18, 380, 54);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
       ctx.font = '700 20px "Space Grotesk", system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(`Run • ${this.score}`, 36, 48);
       ctx.font = '500 14px "Space Grotesk", system-ui, sans-serif';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.fillText('SPACE or click to jump • R to reset', 36, 68);
+      ctx.fillText('SPACE to flip • Arrow keys to move • R to reset', 36, 68);
     }
     ctx.restore();
   }
 
+  _drawStars() {
+    const ctx = this.ctx;
+    for (const star of this.stars) {
+      const relZ = star.z - this.player.z;
+      if (relZ > -500 && relZ < 3000) {
+        const scale = 600 / (relZ + 600);
+        const alpha = Math.min(1, scale * 2);
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = '#ffffff';
+        const size = star.size * scale;
+        ctx.fillRect(
+          this.canvas.width / 2 + star.x * scale - size / 2,
+          this.canvas.height / 2 + star.y * scale - size / 2,
+          size,
+          size
+        );
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   _drawTunnel() {
     const ctx = this.ctx;
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
+    const tunnelWidth = 300;
     
-    // Draw multiple tunnel rings to create depth
-    for (let i = 0; i < 15; i++) {
-      const z = i * 200;
-      const scale = 300 / (z + 300);
-      const radius = 180 * scale;
+    // Draw segments in 3D perspective
+    for (const segment of this.segments) {
+      const relZ = segment.z - this.player.z;
+      if (relZ < -200 || relZ > 1500) continue;
       
-      const alpha = Math.max(0, Math.min(1, scale * 2));
+      const scale = 400 / (relZ + 400);
+      const w = tunnelWidth * scale;
+      const nextZ = segment.z + segment.length - this.player.z;
+      const nextScale = 400 / (nextZ + 400);
+      const nextW = tunnelWidth * nextScale;
       
-      // Tunnel ring
-      ctx.strokeStyle = `rgba(100, 100, 150, ${alpha * 0.3})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.stroke();
-      
-      // Draw segments
-      const segments = 8;
-      for (let j = 0; j < segments; j++) {
-        const angle = (j / segments) * Math.PI * 2 + (this.camera.rotation * Math.PI / 180);
-        const x1 = cx + Math.cos(angle) * radius * 0.9;
-        const y1 = cy + Math.sin(angle) * radius * 0.9;
-        const x2 = cx + Math.cos(angle) * radius * 1.1;
-        const y2 = cy + Math.sin(angle) * radius * 1.1;
+      // Draw each wall of the square tunnel
+      for (let wallIdx = 0; wallIdx < 4; wallIdx++) {
+        const wall = segment.walls[wallIdx];
+        if (!wall) continue;
         
-        ctx.strokeStyle = `rgba(150, 150, 200, ${alpha * 0.2})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+        this._drawWall(wallIdx, w, nextW, scale, wall);
       }
     }
   }
 
-  _drawPlatforms() {
+  _drawWall(wallIdx, w, nextW, scale, wall) {
     const ctx = this.ctx;
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
     
-    // Draw platforms in 3D space
-    for (const platform of this.platforms) {
-      const relZ = platform.z - this.camera.z;
-      if (relZ < 0 || relZ > 2500) continue;
-      
-      const scale = 300 / (relZ + 300);
-      const radius = 180 * scale;
-      
-      // Platform angle with camera rotation
-      const angle = (platform.angle + this.camera.rotation) * Math.PI / 180;
-      const width = platform.width * Math.PI / 180;
-      
-      // Draw arc for platform (thicker and more visible)
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 12 * scale;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, angle - width / 2, angle + width / 2);
-      ctx.stroke();
-      
-      // Draw inner shadow/glow
-      ctx.strokeStyle = '#1a1a2e';
-      ctx.lineWidth = 8 * scale;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, angle - width / 2, angle + width / 2);
-      ctx.stroke();
-      
-      // Draw stars/particles on platform (more visible)
-      const particleCount = Math.max(3, Math.floor(8 * scale));
-      for (let i = 0; i < particleCount; i++) {
-        const pAngle = angle - width / 2 + ((i + 0.5) / particleCount) * width;
-        const px = cx + Math.cos(pAngle) * radius;
-        const py = cy + Math.sin(pAngle) * radius;
-        
-        // Pulsing star effect
-        const pulse = 0.5 + Math.sin(this._time * 4 + i) * 0.5;
-        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.9})`;
-        ctx.beginPath();
-        ctx.arc(px, py, 3 * scale, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Glow
-        ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.3})`;
-        ctx.beginPath();
-        ctx.arc(px, py, 5 * scale, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // Determine wall position based on which wall it is
+    // 0=floor, 1=right, 2=ceiling, 3=left
+    let points = [];
+    let nextPoints = [];
+    
+    switch (wallIdx) {
+      case 0: // floor
+        points = [[-w/2, w/2], [w/2, w/2]];
+        nextPoints = [[-nextW/2, nextW/2], [nextW/2, nextW/2]];
+        break;
+      case 1: // right wall
+        points = [[w/2, w/2], [w/2, -w/2]];
+        nextPoints = [[nextW/2, nextW/2], [nextW/2, -nextW/2]];
+        break;
+      case 2: // ceiling
+        points = [[w/2, -w/2], [-w/2, -w/2]];
+        nextPoints = [[nextW/2, -nextW/2], [-nextW/2, -nextW/2]];
+        break;
+      case 3: // left wall
+        points = [[-w/2, -w/2], [-w/2, w/2]];
+        nextPoints = [[-nextW/2, -nextW/2], [-nextW/2, nextW/2]];
+        break;
     }
+    
+    // Draw solid platform base
+    ctx.fillStyle = '#1a1a2e';
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    ctx.lineTo(points[1][0], points[1][1]);
+    ctx.lineTo(nextPoints[1][0], nextPoints[1][1]);
+    ctx.lineTo(nextPoints[0][0], nextPoints[0][1]);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Draw holes (as dark space)
+    for (const hole of wall.holes) {
+      const holeLeft = hole.x - hole.width / 2;
+      const holeRight = hole.x + hole.width / 2;
+      
+      const p1 = this._lerp(points[0], points[1], (holeLeft + 1) / 2);
+      const p2 = this._lerp(points[0], points[1], (holeRight + 1) / 2);
+      const p3 = this._lerp(nextPoints[0], nextPoints[1], (holeRight + 1) / 2);
+      const p4 = this._lerp(nextPoints[0], nextPoints[1], (holeLeft + 1) / 2);
+      
+      ctx.fillStyle = '#050510';
+      ctx.beginPath();
+      ctx.moveTo(p1[0], p1[1]);
+      ctx.lineTo(p2[0], p2[1]);
+      ctx.lineTo(p3[0], p3[1]);
+      ctx.lineTo(p4[0], p4[1]);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Draw hole edges with subtle glow
+      ctx.strokeStyle = 'rgba(100, 50, 150, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    
+    // Draw grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4;
+      const p1 = this._lerp(points[0], points[1], t);
+      const p2 = this._lerp(nextPoints[0], nextPoints[1], t);
+      ctx.beginPath();
+      ctx.moveTo(p1[0], p1[1]);
+      ctx.lineTo(p2[0], p2[1]);
+      ctx.stroke();
+    }
+  }
+
+  _lerp(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   }
 
   _drawPlayer() {
     const ctx = this.ctx;
-    const cx = this.canvas.width / 2;
-    const cy = this.canvas.height / 2;
     
-    // Player is always at center-ish in screen space
-    const radius = 120 + this.player.y;
-    const angle = (this.player.x + this.camera.rotation) * Math.PI / 180;
-    
-    const px = cx + Math.cos(angle) * radius;
-    const py = cy + Math.sin(angle) * radius;
+    // Player position on current wall
+    const x = this.player.x * 150;
+    const y = 150; // distance from center
     
     // Draw player as a small creature
     ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(angle + Math.PI / 2);
+    ctx.translate(x, y);
     
     // Body
     ctx.fillStyle = '#9ca3af';
